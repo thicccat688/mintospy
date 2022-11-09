@@ -1,6 +1,7 @@
 from mintospy.constants import CONSTANTS
 from mintospy.endpoints import ENDPOINTS
 from mintospy.exceptions import RecaptchaException, NetworkException
+from mintospy.utils import Utils
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.common.exceptions import WebDriverException
@@ -11,8 +12,9 @@ from selenium.common import TimeoutException
 from seleniumrequests import Chrome
 from webdriver_manager.chrome import ChromeDriverManager
 from pydub import AudioSegment
-from typing import List
+from typing import Union, List
 import speech_recognition as sr
+import pandas as pd
 import requests
 import tempfile
 import warnings
@@ -90,11 +92,40 @@ class API:
 
         return data
 
-    def get_investments(self, current: bool = True, raw: bool = False) -> List[dict]:
-        data = self.__driver.request(
+    def get_investments(
+            self,
+            currency: str,
+            sort: str = 'interestRate',
+            countries: List[str] = None,
+            current: bool = True,
+            ascending_sort: bool = False,
+            raw: bool = False,
+    ) -> Union[pd.DataFrame, List[dict]]:
+        currency_iso_code = self._get_currency_iso(currency)
+
+        investment_data = {
+            'countries': countries,
+            'currency': currency_iso_code,
+            'pagination': {
+                'maxResults': 30,
+                'page': 1,
+            },
+            'sorting': {
+                'sortField': sort,
+                'sortOrder': 'ASC' if ascending_sort else 'DESC',
+            }
+        }
+
+        if countries is not None:
+            investment_data['countries'] = list(map(lambda cnt: self._get_country_iso(cnt), countries))
+
+        data = self.__driver.request(                           
             url=ENDPOINTS.API_INVESTMENTS_URI,
             method='POST',
+            data=investment_data,
         ).json()
+
+        return Utils.obj_str_to_digits(data['items']) if raw else pd.DataFrame(data['items'])
 
     def get_loans(self, raw: bool = False) -> List[dict]:
         pass
@@ -165,6 +196,10 @@ class API:
         return pyotp.TOTP(self.__tfa_secret).now()
 
     def _resolve_captcha(self) -> None:
+        """
+        Resolve Captcha by trying to find iframe with challenge 
+        """
+
         iframe = self.__driver.find_element(
             by='xpath',
             value='//iframe[@title="recaptcha challenge expires in two minutes"]',
@@ -268,6 +303,19 @@ class API:
         return CONSTANTS.CURRENCIES[currency]
 
     @staticmethod
+    def _get_country_iso(country: str) -> int:
+        """
+        :param country: Country to validate and get ISO code of
+        :return: Country ISO
+        :raises ValueError: If country isn't included in Mintos' accepted countries
+        """
+
+        if country not in CONSTANTS.COUNTRIES:
+            raise ValueError(f'Country must be one of the following: {", ".join(CONSTANTS.COUNTRIES)}')
+
+        return CONSTANTS.COUNTRIES[country]
+
+    @staticmethod
     def _cleanup(paths: set) -> None:
         for path in paths:
             if os.path.exists(path):
@@ -290,6 +338,9 @@ if __name__ == '__main__':
     print(time.time() - t1)
 
     print(mintos_api.get_portfolio_data(currency='EUR'))
+
     print(mintos_api.get_net_annual_return(currency='EUR'))
+
+    print(mintos_api.get_portfolio_data(currency='EUR'))
 
     mintos_api.logout()

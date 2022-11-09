@@ -11,6 +11,10 @@ class CONSTANTS:
         'CZK': 203,
     }
 
+    COUNTRIES = {
+
+    }
+
     USER_AGENTS = [
         'Mozilla/5.0 (Linux x86_64; rv:78.0) Gecko/20100101 Firefox/78.0',
         'Mozilla/5.0 (Linux x86_64; rv:85.0) Gecko/20100101 Firefox/85.0',
