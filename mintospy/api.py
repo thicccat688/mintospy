@@ -13,6 +13,7 @@ from seleniumrequests import Chrome
 from webdriver_manager.chrome import ChromeDriverManager
 from pydub import AudioSegment
 from typing import Union, List
+from datetime import datetime
 import speech_recognition as sr
 import pandas as pd
 import requests
@@ -61,7 +62,7 @@ class API:
         :return: Active loans, late loans, and loans in recovery/default
         """
 
-        currency_iso_code = self._get_currency_iso(currency)
+        currency_iso_code = CONSTANTS.get_currency_iso(currency)
 
         data = self.__driver.request(
             url=f'{ENDPOINTS.API_PORTFOLIO_URI}',
@@ -77,7 +78,7 @@ class API:
         :return: Currency ISO code, net annual return with and without campaign bonuses
         """
 
-        currency_iso_code = self._get_currency_iso(currency)
+        currency_iso_code = CONSTANTS.get_currency_iso(currency)
 
         data = self.__driver.request(
             url=ENDPOINTS.API_OVERVIEW_NAR_URI,
@@ -92,40 +93,107 @@ class API:
 
         return data
 
+    def get_currencies(self) -> List[dict]:
+        """
+        :return: Currencies currently accepted on Mintos' marketplace
+        """
+
+        data = self.__driver.request(
+            url=ENDPOINTS.API_CURRENCIES_URI,
+            method='GET',
+        )
+
+        return Utils.parse_mintos_items(data)
+
+    def get_lending_companies(self) -> List[dict]:
+        """
+        :return: Lending companies currently listing loans on Mintos' marketplace
+        """
+
+        data = self.__driver.request(
+            url=ENDPOINTS.API_LENDING_COMPANIES_URI,
+            method='GET',
+        )
+
+        return Utils.parse_mintos_items(data)
+
     def get_investments(
             self,
             currency: str,
+            quantity: int = 30,
             sort: str = 'interestRate',
             countries: List[str] = None,
+            pending_payments: bool = None,
+            include_manual_investments: bool = None,
+            start_date: datetime = None,
+            end_date: datetime = None,
+            isin: str = None,
+            late_loan_exposure: List[str] = None,
+            lender_companies: List[str] = None,
+            lender_groups: List[str] = None,
+            lender_statuses: List[str] = None,
+            listed_for_sale: bool = None,
+            max_interest_rate: float = None,
+            max_lending_company_risk_score: float = None,
+            min_amount: float = None,
+            min_interest_rate: float = None,
+            min_lending_company_risk_score: float = None,
+            pledge_type_groups: List[str] = None,
+            risk_scores: List[int] = None,
+            schedule_types: List[str] = None,
+            strategies: List[str] = None,
+            term_from: int = None,
+            term_to: int = None,
             current: bool = True,
             ascending_sort: bool = False,
             raw: bool = False,
     ) -> Union[pd.DataFrame, List[dict]]:
-        currency_iso_code = self._get_currency_iso(currency)
+        currency_iso_code = CONSTANTS.get_currency_iso(currency)
 
         investment_data = {
             'countries': countries,
             'currency': currency_iso_code,
+            'hasPendingPayments': pending_payments,
+            'includeManualInvestments': include_manual_investments,
+            'investmentDateFrom': start_date,
+            'investmentDateTo': end_date,
+            'isin': isin,
+            'lateLoanExposure': late_loan_exposure,
+            'lenderCompanies': lender_companies,
+            'lenderGroups': lender_groups,
+            'lenderStatuses': lender_statuses,
+            'listedForSale': listed_for_sale,
+            'maxInterestRate': max_interest_rate,
+            'maxLendingCompanyRiskScore': max_lending_company_risk_score,
+            'minAmount': min_amount,
+            'minInterestRate': min_interest_rate,
+            'minLendingCompanyRiskScore': min_lending_company_risk_score,
             'pagination': {
-                'maxResults': 30,
+                'maxResults': quantity,
                 'page': 1,
             },
+            'pledgeTypeGroups': pledge_type_groups,
+            'riskScores': risk_scores,
+            'scheduleTypes': schedule_types,
             'sorting': {
                 'sortField': sort,
                 'sortOrder': 'ASC' if ascending_sort else 'DESC',
-            }
+            },
+            'strategies': strategies,
+            'termFrom': term_from,
+            'termTo': term_to,
         }
 
         if countries is not None:
-            investment_data['countries'] = list(map(lambda cnt: self._get_country_iso(cnt), countries))
+            investment_data['countries'] = list(map(lambda cnt: CONSTANTS.get_country_iso(cnt), countries))
 
         data = self.__driver.request(                           
-            url=ENDPOINTS.API_INVESTMENTS_URI,
+            url=ENDPOINTS.API_CURRENT_INVESTMENTS_URI if current else ENDPOINTS.API_FINISHED_INVESTMENTS_URI,
             method='POST',
             data=investment_data,
         ).json()
 
-        return Utils.obj_str_to_digits(data['items']) if raw else pd.DataFrame(data['items'])
+        return Utils.parse_mintos_items(data['items']) if raw else pd.DataFrame(data['items'])
 
     def get_loans(self, raw: bool = False) -> List[dict]:
         pass
@@ -288,32 +356,6 @@ class API:
         options.add_argument('start-maximized')
 
         return Chrome(options=options, service=service)
-
-    @staticmethod
-    def _get_currency_iso(currency: str) -> int:
-        """
-        :param currency: Currency to validate and get ISO code of
-        :return: Currency ISO code, if currency is invalid raise ValueError
-        :raises ValueError: If currency isn't included in Mintos' accepted currencies
-        """
-
-        if currency not in CONSTANTS.CURRENCIES:
-            raise ValueError(f'Currency must be one of the following: {", ".join(CONSTANTS.CURRENCIES)}')
-
-        return CONSTANTS.CURRENCIES[currency]
-
-    @staticmethod
-    def _get_country_iso(country: str) -> int:
-        """
-        :param country: Country to validate and get ISO code of
-        :return: Country ISO
-        :raises ValueError: If country isn't included in Mintos' accepted countries
-        """
-
-        if country not in CONSTANTS.COUNTRIES:
-            raise ValueError(f'Country must be one of the following: {", ".join(CONSTANTS.COUNTRIES)}')
-
-        return CONSTANTS.COUNTRIES[country]
 
     @staticmethod
     def _cleanup(paths: set) -> None:

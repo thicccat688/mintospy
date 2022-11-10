@@ -7,11 +7,17 @@ class ENDPOINTS:
 
     API_TFA_URI = f'{BASE_URI}/en/webapp-api/user/login/otp'
 
-    API_PORTFOLIO_URI = f'{BASE_URI}/marketplace-api/v1/note-series/overview/portfolio-data'
-
     API_OVERVIEW_NAR_URI = f'{BASE_URI}/en/webapp-api/user/overview-net-annual-returns'
 
-    API_INVESTMENTS_URI = f'{BASE_URI}/marketplace-api/v1/user/note-series/investments/current'
+    API_PORTFOLIO_URI = f'{BASE_URI}/marketplace-api/v1/note-series/overview/portfolio-data'
+
+    API_CURRENCIES_URI = f'{BASE_URI}/marketplace-api/v1/currencies'
+
+    API_LENDING_COMPANIES_URI = f'{BASE_URI}/en/webapp-api/lender-companies'
+
+    API_CURRENT_INVESTMENTS_URI = f'{BASE_URI}/marketplace-api/v1/user/note-series/investments/current'
+
+    API_FINISHED_INVESTMENTS_URI = f'{BASE_URI}/marketplace-api/v1/user/note-series/investments/finished'
 
     WEB_APP_URI = 'https://www.mintos.com/en'
 

@@ -12,8 +12,45 @@ class CONSTANTS:
     }
 
     COUNTRIES = {
-
+        'Albania': 83,
     }
+
+    LOAN_TYPES = [
+        'agricultural',
+        'business',
+        'car',
+        'invoice_financing',
+        'mortgage',
+        'pawnbroking',
+        'personal',
+        'short_term',
+    ]
+
+    @staticmethod
+    def get_currency_iso(currency: str) -> int:
+        """
+        :param currency: Currency to validate and get ISO code of
+        :return: Currency ISO code, if currency is invalid raise ValueError
+        :raises ValueError: If currency isn't included in Mintos' accepted currencies
+        """
+
+        if currency not in CONSTANTS.CURRENCIES:
+            raise ValueError(f'Currency must be one of the following: {", ".join(CONSTANTS.CURRENCIES)}')
+
+        return CONSTANTS.CURRENCIES[currency]
+
+    @staticmethod
+    def get_country_iso(country: str) -> int:
+        """
+        :param country: Country to validate and get ISO code of
+        :return: Country ISO
+        :raises ValueError: If country isn't included in Mintos' accepted countries
+        """
+
+        if country not in CONSTANTS.COUNTRIES:
+            raise ValueError(f'Country must be one of the following: {", ".join(CONSTANTS.COUNTRIES)}')
+
+        return CONSTANTS.COUNTRIES[country]
 
     USER_AGENTS = [
         'Mozilla/5.0 (Linux x86_64; rv:78.0) Gecko/20100101 Firefox/78.0',
