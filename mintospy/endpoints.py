@@ -24,3 +24,5 @@ class ENDPOINTS:
     LOGIN_URI = f'{WEB_APP_URI}/login'
 
     OVERVIEW_URI = f'{WEB_APP_URI}/overview'
+
+    CURRENT_INVESTMENTS_URI = f'{WEB_APP_URI}/set-of-notes/investments/current'

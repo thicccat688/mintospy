@@ -22,6 +22,7 @@ import tempfile
 import warnings
 import pyotp
 import time
+import json
 import os
 
 
@@ -53,6 +54,9 @@ class API:
 
         except WebDriverException:
             warnings.warn('You do not have a chromedriver executable in your PATH. Installing it for you.')
+
+        # Get anti-CSRF token
+        self.__csrf_token = self._get_csrf_token()
 
         # Automatically authenticate to Mintos API upon API object initialization
         self.login()
@@ -339,9 +343,6 @@ class API:
             except RecaptchaException:
                 raise TimeoutException('CAPTCHA did not respond on time.')
 
-        # Add anti-CSRF token to selenium requests mixed in session
-        self.__driver.requests_session.headers.update({'anti-csrf-token': self._get_csrf_token()})
-
     def logout(self) -> None:
         self._make_request(url=ENDPOINTS.API_LOGOUT_URI, method='GET')
 
@@ -356,6 +357,8 @@ class API:
         """
         Resolve Captcha by trying to find iframe with challenge 
         """
+
+        self.__driver.switch_to.default_content()
 
         iframe = self._wait_for_element(
             tag='xpath',
@@ -422,7 +425,7 @@ class API:
         csrf_token = self.__driver.find_element(
             by='xpath',
             value='//meta[@name="csrf-token"]',
-        ).text
+        ).get_attribute(name='content')
 
         return csrf_token
 
@@ -430,20 +433,30 @@ class API:
             self,
             url: str,
             method: str = 'GET',
-            **kwargs,
+            params: dict = None,
+            data: dict = None,
     ) -> Response:
         """
         Request handler with built-in exception handling for Mintos' API
         :param url: URL of endpoint to call
         :param method: HTTP method to be used (POST, GET, PUT, DELETE, etc.)
-        :param kwargs: Additional arguments such as data, params, etc.
+        :param params: Query parameters to send in HTTP request
+        :param data: Payload to send in HTTP request
         :return: Response object from requests library
         """
+
+        if data is not None:
+            data = json.dumps(data)
 
         response = self.__driver.request(
             url=url,
             method=method,
-            **kwargs,
+            headers={
+                'anti-csrf-token': self.__csrf_token,
+                **self.__driver.requests_session.headers,
+            },
+            params=params,
+            json=data,
         )
 
         json_data = response.json()
