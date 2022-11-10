@@ -1,6 +1,6 @@
 from mintospy.constants import CONSTANTS
 from mintospy.endpoints import ENDPOINTS
-from mintospy.exceptions import RecaptchaException, NetworkException
+from mintospy.exceptions import MintosException, RecaptchaException, NetworkException
 from mintospy.utils import Utils
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -14,6 +14,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 from pydub import AudioSegment
 from typing import Union, List
 from datetime import datetime
+from requests import Response
 import speech_recognition as sr
 import pandas as pd
 import requests
@@ -64,7 +65,7 @@ class API:
 
         currency_iso_code = CONSTANTS.get_currency_iso(currency)
 
-        data = self.__driver.request(
+        data = self._make_request(
             url=f'{ENDPOINTS.API_PORTFOLIO_URI}',
             method='GET',
             params={'currencyIsoCode': currency_iso_code},
@@ -80,7 +81,7 @@ class API:
 
         currency_iso_code = CONSTANTS.get_currency_iso(currency)
 
-        data = self.__driver.request(
+        data = self._make_request(
             url=ENDPOINTS.API_OVERVIEW_NAR_URI,
             method='GET',
             params={'currencyIsoCode': currency_iso_code},
@@ -91,31 +92,65 @@ class API:
             if isinstance(data[k], dict):
                 data[k] = float(data[k][str(currency_iso_code)])
 
-        return data
+        return Utils.parse_mintos_items(data)
 
     def get_currencies(self) -> List[dict]:
         """
         :return: Currencies currently accepted on Mintos' marketplace
         """
 
-        data = self.__driver.request(
+        data = self._make_request(
             url=ENDPOINTS.API_CURRENCIES_URI,
             method='GET',
-        )
+        ).json()
 
-        return Utils.parse_mintos_items(data)
+        return data['items']
 
     def get_lending_companies(self) -> List[dict]:
         """
         :return: Lending companies currently listing loans on Mintos' marketplace
         """
 
-        data = self.__driver.request(
+        data = self._make_request(
             url=ENDPOINTS.API_LENDING_COMPANIES_URI,
             method='GET',
-        )
+        ).json()
 
-        return Utils.parse_mintos_items(data)
+        return data
+
+    def get_distribution(
+            self,
+            currency: str,
+            quantity: int = 30,
+            sort: str = 'interestRate',
+            countries: List[str] = None,
+            pending_payments: bool = None,
+            include_manual_investments: bool = None,
+            start_date: datetime = None,
+            end_date: datetime = None,
+            isin: str = None,
+            late_loan_exposure: List[str] = None,
+            lender_companies: List[str] = None,
+            lender_groups: List[str] = None,
+            lender_statuses: List[str] = None,
+            listed_for_sale: bool = None,
+            max_interest_rate: float = None,
+            max_lending_company_risk_score: float = None,
+            min_amount: float = None,
+            min_interest_rate: float = None,
+            min_lending_company_risk_score: float = None,
+            pledge_type_groups: List[str] = None,
+            risk_scores: List[int] = None,
+            schedule_types: List[str] = None,
+            strategies: List[str] = None,
+            term_from: int = None,
+            term_to: int = None,
+            current: bool = True,
+            include_extra_data: bool = True,
+            ascending_sort: bool = False,
+            raw: bool = False,
+    ):
+        pass
 
     def get_investments(
             self,
@@ -145,9 +180,43 @@ class API:
             term_from: int = None,
             term_to: int = None,
             current: bool = True,
+            include_extra_data: bool = True,
             ascending_sort: bool = False,
             raw: bool = False,
     ) -> Union[pd.DataFrame, List[dict]]:
+        """
+        :param currency:
+        :param quantity:
+        :param sort:
+        :param countries:
+        :param pending_payments:
+        :param include_manual_investments:
+        :param start_date:
+        :param end_date:
+        :param isin:
+        :param late_loan_exposure:
+        :param lender_companies:
+        :param lender_groups:
+        :param lender_statuses:
+        :param listed_for_sale:
+        :param max_interest_rate:
+        :param max_lending_company_risk_score:
+        :param min_amount:
+        :param min_interest_rate:
+        :param min_lending_company_risk_score:
+        :param pledge_type_groups:
+        :param risk_scores:
+        :param schedule_types:
+        :param strategies:
+        :param term_from:
+        :param term_to:
+        :param current:
+        :param include_extra_data:
+        :param ascending_sort:
+        :param raw:
+        :return:
+        """
+
         currency_iso_code = CONSTANTS.get_currency_iso(currency)
 
         investment_data = {
@@ -187,13 +256,23 @@ class API:
         if countries is not None:
             investment_data['countries'] = list(map(lambda cnt: CONSTANTS.get_country_iso(cnt), countries))
 
-        data = self.__driver.request(                           
+        data = self._make_request(                           
             url=ENDPOINTS.API_CURRENT_INVESTMENTS_URI if current else ENDPOINTS.API_FINISHED_INVESTMENTS_URI,
             method='POST',
             data=investment_data,
         ).json()
 
-        return Utils.parse_mintos_items(data['items']) if raw else pd.DataFrame(data['items'])
+        parsed_data = Utils.parse_mintos_items(data)
+
+        del parsed_data['pagination']
+
+        if not include_extra_data:
+            del parsed_data['extraData']
+
+        return data if raw else {
+            'loans': pd.DataFrame(parsed_data.get('items')),
+            'extra_data': parsed_data.get('extraData'),
+        }
 
     def get_loans(self, raw: bool = False) -> List[dict]:
         pass
@@ -228,9 +307,16 @@ class API:
         except TimeoutException:
             self._resolve_captcha()
 
-        self.__driver.find_element(
-            by='xpath',
-            value='//input[@type="text"]',
+        self._wait_for_element(
+            tag='xpath',
+            locator='//label[text()=" 6-digit code "]',
+            timeout=5
+        )
+
+        self._wait_for_element(
+            tag='xpath',
+            locator='//input[@type="text"]',
+            timeout=5
         ).send_keys(self._gen_totp())
 
         self.__driver.find_element(
@@ -251,10 +337,13 @@ class API:
                 self._resolve_captcha()
 
             except RecaptchaException:
-                raise TimeoutError('Captcha did not respond on time.')
+                raise TimeoutException('CAPTCHA did not respond on time.')
+
+        # Add anti-CSRF token to selenium requests mixed in session
+        self.__driver.requests_session.headers.update({'anti-csrf-token': self._get_csrf_token()})
 
     def logout(self) -> None:
-        self.__driver.request(url=ENDPOINTS.API_LOGOUT_URI, method='GET')
+        self._make_request(url=ENDPOINTS.API_LOGOUT_URI, method='GET')
 
     def _gen_totp(self) -> str:
         """
@@ -268,9 +357,10 @@ class API:
         Resolve Captcha by trying to find iframe with challenge 
         """
 
-        iframe = self.__driver.find_element(
-            by='xpath',
-            value='//iframe[@title="recaptcha challenge expires in two minutes"]',
+        iframe = self._wait_for_element(
+            tag='xpath',
+            locator='//iframe[@title="recaptcha challenge expires in two minutes"]',
+            timeout=5,
         )
 
         self.__driver.switch_to.frame(iframe)
@@ -319,14 +409,49 @@ class API:
 
         self.__driver.find_element(by='id', value='audio-response').send_keys(recognized_text)
 
-        time.sleep(60)
-
-        verify_button = self.__driver.find_element(
+        self.__driver.find_element(
             by='id',
             value='recaptcha-verify-button',
+        ).click()
+
+        self.__driver.switch_to.default_content()
+
+    def _get_csrf_token(self) -> str:
+        self.__driver.get(ENDPOINTS.WEB_APP_URI)
+
+        csrf_token = self.__driver.find_element(
+            by='xpath',
+            value='//meta[@name="csrf-token"]',
+        ).text
+
+        return csrf_token
+
+    def _make_request(
+            self,
+            url: str,
+            method: str = 'GET',
+            **kwargs,
+    ) -> Response:
+        """
+        Request handler with built-in exception handling for Mintos' API
+        :param url: URL of endpoint to call
+        :param method: HTTP method to be used (POST, GET, PUT, DELETE, etc.)
+        :param kwargs: Additional arguments such as data, params, etc.
+        :return: Response object from requests library
+        """
+
+        response = self.__driver.request(
+            url=url,
+            method=method,
+            **kwargs,
         )
 
-        self._js_click(verify_button)
+        json_data = response.json()
+
+        if response.status_code >= 400:
+            raise MintosException(json_data['errors'][0]['message'])
+
+        return response
 
     def _wait_for_element(self, tag: str, locator: str, timeout: int) -> WebElement:
         """
@@ -343,6 +468,10 @@ class API:
         return self.__driver.find_element(by=tag, value=locator)
 
     def _js_click(self, element: WebElement) -> None:
+        """
+        :param element: Web element to perform click on via JavaScript
+        """
+
         self.__driver.execute_script('arguments[0].click();', element)
 
     @staticmethod
@@ -375,7 +504,7 @@ if __name__ == '__main__':
         )
 
     except TimeoutException:
-        raise NetworkException('Your internet connection is too degraded to log in to Mintos.')
+        raise NetworkException('Check your internet connection.')
 
     print(time.time() - t1)
 
@@ -383,6 +512,10 @@ if __name__ == '__main__':
 
     print(mintos_api.get_net_annual_return(currency='EUR'))
 
-    print(mintos_api.get_portfolio_data(currency='EUR'))
+    print(mintos_api.get_lending_companies())
+
+    print(mintos_api.get_currencies())
+
+    print(mintos_api.get_investments(currency='EUR'))
 
     mintos_api.logout()
