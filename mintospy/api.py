@@ -41,12 +41,18 @@ class API:
         (Only mandatory if account has two-factor authentication enabled)
         """
 
-        self.email = email
-        self.__password = password
-        self.__tfa_secret = tfa_secret
+        if email is None:
+            raise ValueError('Invalid email.')
+
+        if password is None:
+            raise ValueError('Invalid password.')
 
         if tfa_secret is None:
             warnings.warn('Using two-factor authentication with your Mintos account is highly recommended.')
+
+        self.email = email
+        self.__password = password
+        self.__tfa_secret = tfa_secret
 
         try:
             # Initialise web driver session
@@ -433,6 +439,7 @@ class API:
             self,
             url: str,
             method: str = 'GET',
+            headers: dict = None,
             params: dict = None,
             data: dict = None,
     ) -> Response:
@@ -448,13 +455,17 @@ class API:
         if data is not None:
             data = json.dumps(data)
 
+        headers = {
+            'anti-csrf-token': self.__csrf_token,  # Set anti-CSRF token on every request because RequestsMixin for
+            # Selenium doesn't persist extra headers
+            **self.__driver.requests_session.headers,  # Add existing session headers
+            **headers,  # Add extra headers below as to take priority over previous headers
+        }
+
         response = self.__driver.request(
             url=url,
             method=method,
-            headers={
-                'anti-csrf-token': self.__csrf_token,
-                **self.__driver.requests_session.headers,
-            },
+            headers=headers,
             params=params,
             json=data,
         )
