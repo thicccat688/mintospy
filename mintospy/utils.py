@@ -1,11 +1,13 @@
 from typing import Generator, Union
 from bs4 import BeautifulSoup
+from bs4.element import ResultSet
+from typing import List
 import json
 
 
 class Utils:
     @classmethod
-    def mount_url(cls, url: str, params: Union[dict, tuple]) -> str:
+    def mount_url(cls, url: str, params: Union[dict, List[tuple]]) -> str:
         query_string = cls._mount_query_string(params)
 
         return url + query_string
@@ -28,6 +30,17 @@ class Utils:
     @classmethod
     def parse_mintos_items(cls, __obj: Union[list, dict]):
         return {k: v for (k, v) in cls._parse_mintos_items_gen(__obj)}
+
+    @staticmethod
+    def get_elements(markup: str, tag: str, attrs: dict) -> ResultSet:
+        parsed_html = BeautifulSoup(markup, 'html.parser')
+
+        data = parsed_html.find_all(
+            name=tag,
+            attrs=attrs,
+        )
+
+        return data
 
     @classmethod
     def _parse_mintos_items_gen(cls, __obj: object) -> Generator:
@@ -52,14 +65,14 @@ class Utils:
                 yield k, cls._str_to_float(v)
 
     @staticmethod
-    def _mount_query_string(params: Union[dict, tuple]) -> str:
+    def _mount_query_string(params: Union[dict, List[tuple]]) -> str:
         query_string = '?'
 
         if params is not None:
             if len(params) == 0:
                 raise ValueError('Invalid query parameters.')
 
-            if isinstance(params, tuple):
+            if isinstance(params, list):
                 for (k, v) in params:
                     query_string += f'{k}={v}&'
 

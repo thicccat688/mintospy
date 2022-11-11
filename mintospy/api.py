@@ -51,6 +51,9 @@ class API:
         self.__password = password
         self.__tfa_secret = tfa_secret
 
+        # Set captcha resolved status
+        self.__captcha_resolved = False
+
         # Initialise web driver session
         self.__driver = self._create_driver()
 
@@ -59,7 +62,7 @@ class API:
 
     def get_portfolio_data(self, currency: str) -> dict:
         """
-        :param: currency: Currency of portfolio to get data from (EUR, KZT, PLN, etc.)
+        :param currency: Currency of portfolio to get data from (EUR, KZT, PLN, etc.)
         :return: Active loans, late loans, and loans in recovery/default
         """
 
@@ -75,7 +78,7 @@ class API:
 
     def get_net_annual_return(self, currency: str) -> dict:
         """
-        :param: currency: Currency of portfolio to get net annual return from (EUR, KZT, PLN, etc.)
+        :param currency: Currency of portfolio to get net annual return from (EUR, KZT, PLN, etc.)
         :return: Currency ISO code, net annual return with and without campaign bonuses
         """
 
@@ -120,63 +123,23 @@ class API:
 
         return data
 
-    def get_distribution(
-            self,
-            currency: str,
-            quantity: int = 30,
-            sort: str = 'interestRate',
-            countries: List[str] = None,
-            pending_payments: bool = None,
-            include_manual_investments: bool = None,
-            start_date: datetime = None,
-            end_date: datetime = None,
-            isin: str = None,
-            late_loan_exposure: List[str] = None,
-            lender_companies: List[str] = None,
-            lender_groups: List[str] = None,
-            lender_statuses: List[str] = None,
-            listed_for_sale: bool = None,
-            max_interest_rate: float = None,
-            max_lending_company_risk_score: float = None,
-            min_amount: float = None,
-            min_interest_rate: float = None,
-            min_lending_company_risk_score: float = None,
-            pledge_type_groups: List[str] = None,
-            risk_scores: List[int] = None,
-            schedule_types: List[str] = None,
-            strategies: List[str] = None,
-            term_from: int = None,
-            term_to: int = None,
-            current: bool = True,
-            include_extra_data: bool = True,
-            ascending_sort: bool = False,
-            raw: bool = False,
-    ):
-        pass
-
     def get_investments(
             self,
             currency: str,
             quantity: int = 30,
             sort: str = 'interestRate',
-            loan_types: List[str] = None,
             countries: List[str] = None,
             pending_payments: bool = None,
-            listed_for_sale: bool = None,
             amortization_methods: List[str] = None,
-            start_date: datetime = None,
-            end_date: datetime = None,
             isin: str = None,
             late_loan_exposure: List[str] = None,
             lending_companies: List[str] = None,
             lender_statuses: List[str] = None,
+            listed_for_sale: bool = None,
             max_interest_rate: float = None,
-            max_lending_company_risk_score: float = None,
-            min_amount: float = None,
             min_interest_rate: float = None,
-            min_lending_company_risk_score: float = None,
+            loan_types: List[str] = None,
             risk_scores: List[int] = None,
-            schedule_types: List[str] = None,
             strategies: List[str] = None,
             max_term: int = None,
             min_term: int = None,
@@ -188,27 +151,21 @@ class API:
             raw: bool = False,
     ) -> Union[pd.DataFrame, List[dict]]:
         """
-        :param currency:
-        :param quantity:
-        :param sort:
-        :param countries:
-        :param pending_payments:
-        :param amortization_methods:
-        :param start_date:
-        :param end_date:
-        :param isin:
-        :param late_loan_exposure:
+        :param currency: Currency that notes are denominated in
+        :param quantity: Quantity of notes to get
+        :param sort: What to sort notes by
+        :param countries: What countries notes should be issued in
+        :param pending_payments: If payments for notes should be pending or not
+        :param amortization_methods: Amortization type of notes (Full, partial, interest-only, or bullet)
+        :param isin: ISIN of security
+        :param late_loan_exposure: Late loan exposure of notes (0_20 for 0-20%, 20_40 for 20-40%, and so on)
         :param lending_companies:
         :param lender_statuses:
         :param listed_for_sale:
         :param max_interest_rate:
-        :param max_lending_company_risk_score:
-        :param min_amount:
         :param min_interest_rate:
-        :param min_lending_company_risk_score:
         :param loan_types:
         :param risk_scores:
-        :param schedule_types:
         :param strategies:
         :param max_term:
         :param min_term:
@@ -225,9 +182,7 @@ class API:
 
         investment_params = [
             ('currencies[]', currency_iso_code),
-            ('sort_field', sort),
             ('sort_order', 'ASC' if ascending_sort else 'DESC'),
-            ('include_manual_investments', include_manual_investments),
             ('max_results', 300),
             ('page', 1),
         ]
@@ -314,6 +269,16 @@ class API:
 
                 investment_params.append(new_company_status)
 
+        if isinstance(sort, str):
+            new_sort = ('sort_field', sort)
+
+            investment_params.append(new_sort)
+
+        if isinstance(include_manual_investments, bool):
+            new_include_manual_investements = ('include_manual_investments', include_manual_investments)
+
+            investment_params.append(new_include_manual_investements)
+
         if isinstance(max_interest_rate, float):
             new_max_interest_rate = ('max_interest', max_interest_rate)
 
@@ -344,16 +309,18 @@ class API:
 
             investment_params.append(new_min_purchased_date)
 
-        self._make_request(
+        investments = self._make_request(
             url=f'{ENDPOINTS.INVESTMENTS_URI}/{"current" if current else "finished"}',
             params=investment_params,
         )
 
-        self._wait_for_element(
-            tag='xpath',
-            locator='//button[@data-testid="notes-filter"]',
-            timeout=10,
-        ).click()
+        securities = Utils.get_elements(
+            markup=investments,
+            tag='class',
+            attrs={'class': 'mw-u-o-hidden mw-u-width-full m-u-to-ellipsis'},
+        )
+
+        return list(map(lambda obj: obj.text, securities))
 
     def get_loans(self, raw: bool = False) -> List[dict]:
         pass
@@ -379,13 +346,6 @@ class API:
             return
 
         try:
-            self._wait_for_element(
-                tag='xpath',
-                locator='//label[text()=" 6-digit code "]',
-                timeout=5,
-            )
-
-        except TimeoutException:
             iframe = self._wait_for_element(
                 tag='xpath',
                 locator='//iframe[@title="recaptcha challenge expires in two minutes"]',
@@ -393,6 +353,13 @@ class API:
             )
 
             self._resolve_captcha(iframe=iframe)
+
+        except TimeoutException:
+            self._wait_for_element(
+                tag='xpath',
+                locator='//label[text()=" 6-digit code "]',
+                timeout=10,
+            )
 
         self._wait_for_element(
             tag='xpath',
@@ -412,28 +379,24 @@ class API:
         ).click()
 
         try:
+            iframe = self._wait_for_element(
+                tag='xpath',
+                locator='//iframe[@title="recaptcha challenge expires in two minutes"][contains(@style,"width:400px")]',
+                timeout=5,
+            )
+
+            self._resolve_captcha(iframe=iframe)
+
+        except RecaptchaException:
+            raise TimeoutException('CAPTCHA did not respond on time.')
+
+        except TimeoutException:
             # Wait for overview page to be displayed to mark the end of the login process
             self._wait_for_element(
                 tag='id',
                 locator='header-wrapper',
-                timeout=15,
+                timeout=10,
             )
-
-        except TimeoutException:
-            try:
-                iframes = self._wait_for_element(
-                    tag='xpath',
-                    locator='//iframe[@title="recaptcha challenge expires in two minutes"]',
-                    timeout=5,
-                    multiple=True,
-                )
-
-                print(iframes)
-
-                self._resolve_captcha(iframe=iframes[-1])
-
-            except RecaptchaException:
-                raise TimeoutException('CAPTCHA did not respond on time.')
 
     def logout(self) -> None:
         self._make_request(url=ENDPOINTS.API_LOGOUT_URI)
@@ -449,10 +412,9 @@ class API:
 
     def _resolve_captcha(self, iframe: WebElement) -> None:
         """
-        Resolve Captcha by trying to find iframe with challenge 
+        Resolve Captcha by trying to find iframe with challenge
+        :param iframe: Iframe of Captcha
         """
-
-        print('test')
 
         self.__driver.switch_to.frame(iframe)
 
@@ -505,18 +467,18 @@ class API:
             value='recaptcha-verify-button',
         ).click()
 
-        self.__driver.switch_to.default_content()
+        self.__captcha_resolved = True
 
     def _make_request(
             self,
             url: str,
-            params: Union[dict, tuple] = None,
+            params: Union[dict, List[tuple]] = None,
             api: bool = False,
     ) -> Union[list, dict, str]:
         """
         Request handler with built-in exception handling for Mintos' API
         :param url: URL of endpoint to call
-        :param params: Query parameters to send in HTTP request (Send as tuple in case of duplicate query strings)
+        :param params: Query parameters to send in HTTP request (Send as list of tuples for duplicate query strings)
         :param api: Specify if request is made directly to Mintos' API or via front-end
         :return: HTML response from HTTP request
         """
@@ -535,22 +497,18 @@ class API:
             tag: str,
             locator: str,
             timeout: int,
-            *,
-            multiple: bool = False,
     ) -> Union[WebElement, List[WebElement]]:
         """
-        :param: tag: Tag to get element by (id, class name, xpath, tag name, etc.)
-        :param: locator: Value of the tag (Example: tag -> id, locator -> button-id)
-        :param: timeout: Time to wait for element before raising TimeoutError
+        :param tag: Tag to get element by (id, class name, xpath, tag name, etc.)
+        :param locator: Value of the tag (Example: tag -> id, locator -> button-id)
+        :param timeout: Time to wait for element before raising TimeoutError
         :return: Web element specified by tag and locator
+        :raises TimeoutException: If the element is not located within the desired time span
         """
 
         element_attributes = (tag, locator)
 
         WebDriverWait(self.__driver, timeout).until(ec.visibility_of_element_located(element_attributes))
-
-        if multiple:
-            return self.__driver.find_elements(by=tag, value=locator)
 
         return self.__driver.find_element(by=tag, value=locator)
 
