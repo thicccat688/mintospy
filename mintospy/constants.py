@@ -52,6 +52,70 @@ class CONSTANTS:
         'Estonia': 8,
     }
 
+    LENDING_COMPANIES = {
+        'Financiera Contigo': 119,
+        'Credifiel': 118,
+        'Planet42': 117,
+        'Conmigo Vales': 114,
+        'CAPEM': 113,
+        'GoCredit': 112,
+        'Alivio Capital': 111,
+        'Jet Finance': 110,
+        'Fenchurch Legal': 109,
+        'Finclusion': 107,
+        'Swell': 106,
+        'Revo Technology': 105,
+        'IDF EURASIA': 102,
+        'DelfinGroup': 101,
+        'GFM': 96,
+        'DanaRupiah': 93,
+        'Creditter': 92,
+        'Finko': 91,
+        'Wowwo': 88,
+        'Dinerito': 87,
+        'Evergreen Finance': 85,
+        'Zenka': 82,
+        'E Cash': 81,
+        'Everest Finanse': 80,
+        'ESTO': 79,
+        'Sun Finance': 78,
+        'Dziesiatka Finanse': 77,
+        'Alexcredit': 76,
+        'SOS Credit': 75,
+        'Mikro Kapital': 71,
+        'Novaloans': 70,
+        'Monego': 68,
+        'Dineo Credito': 67,
+        'Cashwagon': 62,
+        'LF TECH': 61,
+        'Credius': 58,
+        'Fireof': 54,
+        'Lime Zaim': 53,
+        'Placet Group': 52,
+        'Dozarplati': 47,
+        'Kviku': 46,
+        'ExpressCredit': 44,
+        'Credissimo': 42,
+        'Rapicredit': 40,
+        'EcoFinance': 32,
+        'Watu Credit': 31,
+        'Rapido Finance': 30,
+        'CashCredit': 29,
+        'GetBucks': 26,
+        'IuteCredit': 25,
+        'ID Finance': 23,
+        'Capital Service': 22,
+        'Mozipo Group': 21,
+        'Eurocent': 20,
+        'Extra Finance': 17,
+        'Creditstar': 11,
+        'Debifo': 6,
+        'Creamfinance': 4,
+        'Capitalia': 3,
+        'Eleving Group': 2,
+        'Hipocredit': 1,
+    }
+
     LOAN_TYPES = [
         'agricultural',
         'business',
@@ -77,7 +141,7 @@ class CONSTANTS:
         return CONSTANTS.CURRENCIES[currency]
 
     @staticmethod
-    def get_country_iso(country: str) -> int:
+    def get_country_iso(country: str) -> str:
         """
         :param country: Country to validate and get ISO code of
         :return: Country ISO
@@ -88,6 +152,32 @@ class CONSTANTS:
             raise ValueError(f'Country must be one of the following: {", ".join(CONSTANTS.COUNTRIES)}')
 
         return CONSTANTS.COUNTRIES[country]
+
+    @staticmethod
+    def get_loan_type_id(loan_type: str) -> str:
+        """
+        :param loan_type: Type of loan (Short-term, long-term, etc.)
+        :return: Loan type id for loan type specified
+        :raises ValueError: If loan type isn't included in Mintos' accepted loan types
+        """
+
+        if loan_type not in CONSTANTS.LOAN_TYPES:
+            raise ValueError(f'Loan type must be one of the following: {", ".join(CONSTANTS.LOAN_TYPES)}')
+
+        return f'type-{loan_type}'
+
+    @staticmethod
+    def get_lending_company_id(lender: str) -> int:
+        """
+        :param lender: Lending company to get ID of
+        :return: Lending company ID of specified lender
+        :raises ValueError: If lending company isn't included in Mintos' current lending companies
+        """
+
+        if lender not in CONSTANTS.LENDING_COMPANIES:
+            raise ValueError(f'Lending company must be one of the following: {", ".join(CONSTANTS.LENDING_COMPANIES)}')
+
+        return CONSTANTS.LENDING_COMPANIES[lender]
 
     USER_AGENTS = [
         'Mozilla/5.0 (Linux x86_64; rv:78.0) Gecko/20100101 Firefox/78.0',

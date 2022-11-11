@@ -166,8 +166,7 @@ class API:
             end_date: datetime = None,
             isin: str = None,
             late_loan_exposure: List[str] = None,
-            lender_companies: List[str] = None,
-            lender_groups: List[str] = None,
+            lending_companies: List[str] = None,
             lender_statuses: List[str] = None,
             listed_for_sale: bool = None,
             max_interest_rate: float = None,
@@ -175,7 +174,7 @@ class API:
             min_amount: float = None,
             min_interest_rate: float = None,
             min_lending_company_risk_score: float = None,
-            pledge_type_groups: List[str] = None,
+            loan_types: List[str] = None,
             risk_scores: List[int] = None,
             schedule_types: List[str] = None,
             strategies: List[str] = None,
@@ -197,8 +196,7 @@ class API:
         :param end_date:
         :param isin:
         :param late_loan_exposure:
-        :param lender_companies:
-        :param lender_groups:
+        :param lending_companies:
         :param lender_statuses:
         :param listed_for_sale:
         :param max_interest_rate:
@@ -206,7 +204,7 @@ class API:
         :param min_amount:
         :param min_interest_rate:
         :param min_lending_company_risk_score:
-        :param pledge_type_groups:
+        :param loan_types:
         :param risk_scores:
         :param schedule_types:
         :param strategies:
@@ -221,60 +219,34 @@ class API:
 
         currency_iso_code = CONSTANTS.get_currency_iso(currency)
 
-        investment_data = {
-            'countries': countries,
-            'currency': currency_iso_code,
-            'hasPendingPayments': pending_payments,
-            'includeManualInvestments': include_manual_investments,
-            'investmentDateFrom': start_date,
-            'investmentDateTo': end_date,
-            'isin': isin,
-            'lateLoanExposure': late_loan_exposure,
-            'lenderCompanies': lender_companies,
-            'lenderGroups': lender_groups,
-            'lenderStatuses': lender_statuses,
-            'listedForSale': listed_for_sale,
-            'maxInterestRate': max_interest_rate,
-            'maxLendingCompanyRiskScore': max_lending_company_risk_score,
-            'minAmount': min_amount,
-            'minInterestRate': min_interest_rate,
-            'minLendingCompanyRiskScore': min_lending_company_risk_score,
-            'pagination': {
-                'maxResults': quantity,
-                'page': 1,
-            },
-            'pledgeTypeGroups': pledge_type_groups,
-            'riskScores': risk_scores,
-            'scheduleTypes': schedule_types,
-            'sorting': {
-                'sortField': sort,
-                'sortOrder': 'ASC' if ascending_sort else 'DESC',
-            },
-            'strategies': strategies,
-            'termFrom': term_from,
-            'termTo': term_to,
-        }
+        self.__driver.get(f'{ENDPOINTS.INVESTMENTS_URI}/{"current" if current else "finished"}')
 
-        if countries is not None:
-            investment_data['countries'] = list(map(lambda cnt: CONSTANTS.get_country_iso(cnt), countries))
+        self._wait_for_element(
+            tag='xpath',
+            locator='//button[@data-testid="notes-filter"]',
+            timeout=10,
+        ).click()
 
-        data = self._make_request(
-            url=ENDPOINTS.API_CURRENT_INVESTMENTS_URI if current else ENDPOINTS.API_FINISHED_INVESTMENTS_URI,
-            method='POST',
-            data=investment_data,
-        ).json()
+        for type_ in loan_types:
+            self._wait_for_element(
+                tag='id',
+                locator=CONSTANTS.get_loan_type_id(type_),
+                timeout=5,
+            )
 
-        parsed_data = Utils.parse_mintos_items(data)
+        for country in countries:
+            self._wait_for_element(
+                tag='id',
+                locator=f'country-{CONSTANTS.get_country_iso(country)}',
+                timeout=5,
+            )
 
-        del parsed_data['pagination']
-
-        if not include_extra_data:
-            del parsed_data['extraData']
-
-        return data if raw else {
-            'loans': pd.DataFrame(parsed_data.get('items')),
-            'extra_data': parsed_data.get('extraData'),
-        }
+        for lender in lending_companies:
+            self._wait_for_element(
+                tag='id',
+                locator=f'lenderCompany-{CONSTANTS.get_lending_company_id(lender)}',
+                timeout=5,
+            )
 
     def get_loans(self, raw: bool = False) -> List[dict]:
         pass
