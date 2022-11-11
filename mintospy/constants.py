@@ -67,7 +67,7 @@ class CONSTANTS:
     def get_currency_iso(currency: str) -> int:
         """
         :param currency: Currency to validate and get ISO code of
-        :return: Currency ISO code, if currency is invalid raise ValueError
+        :return: Currency ISO code
         :raises ValueError: If currency isn't included in Mintos' accepted currencies
         """
 
