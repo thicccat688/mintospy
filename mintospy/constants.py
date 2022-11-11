@@ -116,6 +116,13 @@ class CONSTANTS:
         'Hipocredit': 1,
     }
 
+    AMORTIZATION_TYPES = {
+        'full': 1,
+        'partial': 2,
+        'interest_only': 4,
+        'bullet': 8,
+    }
+
     LOAN_TYPES = [
         'agricultural',
         'business',
@@ -127,44 +134,45 @@ class CONSTANTS:
         'short_term',
     ]
 
-    @staticmethod
-    def get_currency_iso(currency: str) -> int:
+    LATE_LOAN_EXPOSURES = [
+        '0_20',
+        '20_40',
+        '40_60',
+        '60_80',
+        '80_100',
+    ]
+
+    LENDING_COMPANY_STATUSES = [
+        'active',
+        'suspended',
+        'defaulted',
+    ]
+
+    @classmethod
+    def get_currency_iso(cls, currency: str) -> int:
         """
         :param currency: Currency to validate and get ISO code of
         :return: Currency ISO code
         :raises ValueError: If currency isn't included in Mintos' accepted currencies
         """
 
-        if currency not in CONSTANTS.CURRENCIES:
-            raise ValueError(f'Currency must be one of the following: {", ".join(CONSTANTS.CURRENCIES)}')
+        if currency not in cls.CURRENCIES:
+            raise ValueError(f'Currency must be one of the following: {", ".join(cls.CURRENCIES)}')
 
         return CONSTANTS.CURRENCIES[currency]
 
-    @staticmethod
-    def get_country_iso(country: str) -> str:
+    @classmethod
+    def get_country_iso(cls, country: str) -> str:
         """
         :param country: Country to validate and get ISO code of
         :return: Country ISO
         :raises ValueError: If country isn't included in Mintos' accepted countries
         """
 
-        if country not in CONSTANTS.COUNTRIES:
-            raise ValueError(f'Country must be one of the following: {", ".join(CONSTANTS.COUNTRIES)}')
+        if country not in cls.COUNTRIES:
+            raise ValueError(f'Country must be one of the following: {", ".join(cls.COUNTRIES)}')
 
         return CONSTANTS.COUNTRIES[country]
-
-    @staticmethod
-    def get_loan_type_id(loan_type: str) -> str:
-        """
-        :param loan_type: Type of loan (Short-term, long-term, etc.)
-        :return: Loan type id for loan type specified
-        :raises ValueError: If loan type isn't included in Mintos' accepted loan types
-        """
-
-        if loan_type not in CONSTANTS.LOAN_TYPES:
-            raise ValueError(f'Loan type must be one of the following: {", ".join(CONSTANTS.LOAN_TYPES)}')
-
-        return f'type-{loan_type}'
 
     @staticmethod
     def get_lending_company_id(lender: str) -> int:
@@ -179,27 +187,13 @@ class CONSTANTS:
 
         return CONSTANTS.LENDING_COMPANIES[lender]
 
-    USER_AGENTS = [
-        'Mozilla/5.0 (Linux x86_64; rv:78.0) Gecko/20100101 Firefox/78.0',
-        'Mozilla/5.0 (Linux x86_64; rv:85.0) Gecko/20100101 Firefox/85.0',
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 11.2; rv:78.0) Gecko/20100101 Firefox/78.0',
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 11.2; rv:85.0) Gecko/20100101 Firefox/85.0',
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 11_2_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.182 Safari/537.36',
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 11_2_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.182 Safari/537.36 Edg/88.0.705.63',
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 11_2_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.2 Safari/605.1.15',
-        'Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.182 Safari/537.36',
-        'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.182 Safari/537.36',
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.182 Safari/537.36',
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.182 Safari/537.36 Edg/88.0.705.68',
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:78.0) Gecko/20100101 Firefox/78.0',
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:85.0) Gecko/20100101 Firefox/85.0',
-        'Mozilla/5.0 (X11; Fedora; Linux x86_64; rv:78.0) Gecko/20100101 Firefox/78.0',
-        'Mozilla/5.0 (X11; Fedora; Linux x86_64; rv:85.0) Gecko/20100101 Firefox/85.0',
-        'Mozilla/5.0 (X11; Linux i686; rv:78.0) Gecko/20100101 Firefox/78.0',
-        'Mozilla/5.0 (X11; Linux i686; rv:85.0) Gecko/20100101 Firefox/85.0',
-        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.182 Safari/537.36',
-        'Mozilla/5.0 (X11; Ubuntu; Linux i686; rv:78.0) Gecko/20100101 Firefox/78.0',
-        'Mozilla/5.0 (X11; Ubuntu; Linux i686; rv:85.0) Gecko/20100101 Firefox/85.0',
-        'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:78.0) Gecko/20100101 Firefox/78.0',
-        'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:85.0) Gecko/20100101 Firefox/85.0',
-    ]
+    @classmethod
+    def get_amoritzation_method_id(cls, method: str) -> int:
+        """
+        :param method: Amortization method to get ID of (Full, partial, interest only, or bullet)
+        :return: Amortization method ID
+        :raises ValueError: If lending company isn't included in Mintos' current lending companies
+        """
+
+        if method not in cls.AMORTIZATION_METHODS:
+            raise ValueError(f'Amortization method must be one of the following : {", ".join(cls.AMORTIZATION_METHODS)}')

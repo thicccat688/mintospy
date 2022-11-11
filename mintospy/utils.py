@@ -5,7 +5,7 @@ import json
 
 class Utils:
     @classmethod
-    def mount_url(cls, url: str, params: dict) -> str:
+    def mount_url(cls, url: str, params: Union[dict, tuple]) -> str:
         query_string = cls._mount_query_string(params)
 
         return url + query_string
@@ -52,15 +52,20 @@ class Utils:
                 yield k, cls._str_to_float(v)
 
     @staticmethod
-    def _mount_query_string(params: dict) -> str:
+    def _mount_query_string(params: Union[dict, tuple]) -> str:
         query_string = '?'
 
         if params is not None:
             if len(params) == 0:
                 raise ValueError('Invalid query parameters.')
 
-            for (k, v) in params.items():
-                query_string += f'{k}={v}&'
+            if isinstance(params, tuple):
+                for (k, v) in params:
+                    query_string += f'{k}={v}&'
+
+            if isinstance(params, dict):
+                for (k, v) in params.items():
+                    query_string += f'{k}={v}&'
 
         # Get query parameters string except last ampersand (&)
         return query_string[:-1]

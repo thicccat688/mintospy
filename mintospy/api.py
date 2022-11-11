@@ -159,29 +159,31 @@ class API:
             currency: str,
             quantity: int = 30,
             sort: str = 'interestRate',
+            loan_types: List[str] = None,
             countries: List[str] = None,
             pending_payments: bool = None,
-            include_manual_investments: bool = None,
+            listed_for_sale: bool = None,
+            amortization_methods: List[str] = None,
             start_date: datetime = None,
             end_date: datetime = None,
             isin: str = None,
             late_loan_exposure: List[str] = None,
             lending_companies: List[str] = None,
             lender_statuses: List[str] = None,
-            listed_for_sale: bool = None,
             max_interest_rate: float = None,
             max_lending_company_risk_score: float = None,
             min_amount: float = None,
             min_interest_rate: float = None,
             min_lending_company_risk_score: float = None,
-            loan_types: List[str] = None,
             risk_scores: List[int] = None,
             schedule_types: List[str] = None,
             strategies: List[str] = None,
-            term_from: int = None,
-            term_to: int = None,
+            max_term: int = None,
+            min_term: int = None,
+            max_purchased_date: datetime = None,
+            min_purchased_date: datetime = None,
             current: bool = True,
-            include_extra_data: bool = True,
+            include_manual_investments: bool = True,
             ascending_sort: bool = False,
             raw: bool = False,
     ) -> Union[pd.DataFrame, List[dict]]:
@@ -191,7 +193,7 @@ class API:
         :param sort:
         :param countries:
         :param pending_payments:
-        :param include_manual_investments:
+        :param amortization_methods:
         :param start_date:
         :param end_date:
         :param isin:
@@ -208,10 +210,12 @@ class API:
         :param risk_scores:
         :param schedule_types:
         :param strategies:
-        :param term_from:
-        :param term_to:
+        :param max_term:
+        :param min_term:
+        :param max_purchased_date:
+        :param min_purchased_date:
         :param current:
-        :param include_extra_data:
+        :param include_manual_investments:
         :param ascending_sort:
         :param raw:
         :return:
@@ -219,34 +223,137 @@ class API:
 
         currency_iso_code = CONSTANTS.get_currency_iso(currency)
 
-        self.__driver.get(f'{ENDPOINTS.INVESTMENTS_URI}/{"current" if current else "finished"}')
+        investment_params = [
+            ('currencies[]', currency_iso_code),
+            ('sort_field', sort),
+            ('sort_order', 'ASC' if ascending_sort else 'DESC'),
+            ('include_manual_investments', include_manual_investments),
+            ('max_results', 300),
+            ('page', 1),
+        ]
+
+        if isinstance(countries, list):
+            for country in countries:
+                new_country = ('countries[]', CONSTANTS.get_country_iso(country))
+
+                investment_params.append(new_country)
+
+            for lender in lending_companies:
+                new_lender = ('lender_groups[]', CONSTANTS.get_lending_company_id(lender))
+
+                investment_params.append(new_lender)
+
+        if isinstance(loan_types, list):
+            for type_ in loan_types:
+                if type_ not in CONSTANTS.LOAN_TYPES:
+                    raise ValueError(f'Loan type must be one of the following: {", ".join(CONSTANTS.LOAN_TYPES)}')
+
+                new_type = ('pledges[]', type_)
+
+                investment_params.append(new_type)
+
+        if isinstance(amortization_methods, list):
+            for method in amortization_methods:
+                new_method = ('schedule_types[]', CONSTANTS.get_amoritzation_method_id(method))
+
+                investment_params.append(new_method)
+
+        if isinstance(risk_scores, list):
+            for score in risk_scores:
+                if not isinstance(score, int) or score == 'SW':
+                    raise ValueError(
+                        'Risk score needs to be an integer between 1-10 or "SW" (When risk score is suspended).',
+                    )
+
+                if 1 > score > 10:
+                    raise ValueError(
+                        'Risk score can only be a number in between 1-10 or "SW" (When risk score is suspended).',
+                    )
+
+                new_score = ('mintos_scores[]', score)
+
+                investment_params.append(new_score)
+
+        if isinstance(isin, str):
+            if len(isin) != 12:
+                raise ValueError('ISIN must be 12 characters long.')
+
+            new_isin = ('isin', isin)
+
+            investment_params.append(new_isin)
+
+        if isinstance(late_loan_exposure, list):
+            for exposure in late_loan_exposure:
+                if exposure not in CONSTANTS.LATE_LOAN_EXPOSURES:
+                    raise ValueError(
+                        f'Late loan exposure must be one of the following: {", ".join(CONSTANTS.LATE_LOAN_EXPOSURES)}',
+                    )
+
+                new_exposure = ('late_loan_exposure[]', exposure)
+
+                investment_params.append(new_exposure)
+
+        if isinstance(pending_payments, bool):
+            new_pending_status = ('pending_payments_status[]', 1 if pending_payments else 0)
+
+            investment_params.append(new_pending_status)
+
+        if isinstance(listed_for_sale, bool):
+            new_sale_status = ('listed[]', 1 if listed_for_sale else 0)
+
+            investment_params.append(new_sale_status)
+
+        if isinstance(lender_statuses, list):
+            for status in lender_statuses:
+                if status not in CONSTANTS.LENDING_COMPANY_STATUSES:
+                    raise ValueError(
+                        f'Lender status must be one of the following: {", ".join(CONSTANTS.LENDING_COMPANY_STATUSES)}',
+                    )
+
+                new_company_status = ('company_status[]', status)
+
+                investment_params.append(new_company_status)
+
+        if isinstance(max_interest_rate, float):
+            new_max_interest_rate = ('max_interest', max_interest_rate)
+
+            investment_params.append(new_max_interest_rate)
+
+        if isinstance(max_term, float):
+            new_max_term = ('max_term', max_term)
+
+            investment_params.append(new_max_term)
+
+        if isinstance(min_interest_rate, int):
+            new_min_interest_rate = ('min_interest', min_interest_rate)
+
+            investment_params.append(new_min_interest_rate)
+
+        if isinstance(min_term, int):
+            new_min_term = ('min_term', min_term)
+
+            investment_params.append(new_min_term)
+
+        if isinstance(max_purchased_date, datetime):
+            new_max_purchased_date = ('date_to', max_purchased_date.strftime('%d.%m.%Y'))
+
+            investment_params.append(new_max_purchased_date)
+
+        if isinstance(min_purchased_date, datetime):
+            new_min_purchased_date = ('date_from', min_purchased_date.strftime('%d.%m.%Y'))
+
+            investment_params.append(new_min_purchased_date)
+
+        self._make_request(
+            url=f'{ENDPOINTS.INVESTMENTS_URI}/{"current" if current else "finished"}',
+            params=investment_params,
+        )
 
         self._wait_for_element(
             tag='xpath',
             locator='//button[@data-testid="notes-filter"]',
             timeout=10,
         ).click()
-
-        for type_ in loan_types:
-            self._wait_for_element(
-                tag='id',
-                locator=CONSTANTS.get_loan_type_id(type_),
-                timeout=5,
-            )
-
-        for country in countries:
-            self._wait_for_element(
-                tag='id',
-                locator=f'country-{CONSTANTS.get_country_iso(country)}',
-                timeout=5,
-            )
-
-        for lender in lending_companies:
-            self._wait_for_element(
-                tag='id',
-                locator=f'lenderCompany-{CONSTANTS.get_lending_company_id(lender)}',
-                timeout=5,
-            )
 
     def get_loans(self, raw: bool = False) -> List[dict]:
         pass
@@ -403,13 +510,13 @@ class API:
     def _make_request(
             self,
             url: str,
-            params: dict = None,
+            params: Union[dict, tuple] = None,
             api: bool = False,
     ) -> Union[list, dict, str]:
         """
         Request handler with built-in exception handling for Mintos' API
         :param url: URL of endpoint to call
-        :param params: Query parameters to send in HTTP request
+        :param params: Query parameters to send in HTTP request (Send as tuple in case of duplicate query strings)
         :param api: Specify if request is made directly to Mintos' API or via front-end
         :return: HTML response from HTTP request
         """
