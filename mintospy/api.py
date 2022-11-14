@@ -1,3 +1,5 @@
+import speech_recognition
+
 from mintospy.constants import CONSTANTS
 from mintospy.endpoints import ENDPOINTS
 from mintospy.exceptions import RecaptchaException, NetworkException
@@ -52,9 +54,6 @@ class API:
         self.__password = password
         self.__tfa_secret = tfa_secret
 
-        # Set captcha resolved status
-        self.__captcha_resolved = False
-
         # Initialise web driver session
         self.__driver = self._create_driver()
 
@@ -74,6 +73,8 @@ class API:
             params={'currencyIsoCode': currency_iso_code},
             api=True,
         )
+
+        print(self.__driver.page_source, data)
 
         return {k: float(v) for (k, v) in data.items()}
 
@@ -309,14 +310,16 @@ class API:
 
             investment_params.append(new_min_purchased_date)
 
-        investments = self._make_request(
+        self._make_request(
             url=f'{ENDPOINTS.INVESTMENTS_URI}/{"current" if current else "finished"}',
             params=investment_params,
         )
 
-        securities = investments.find_all(
-            tag='div',
-            attrs={'data-testid': 'note-series-item'},
+        securities = self._wait_for_element(
+            tag='xpath',
+            locator='//div[@data-testid="note-series-item"]',
+            timeout=5,
+            multiple=True,
         )
 
         if raw:
@@ -325,31 +328,60 @@ class API:
         else:
             securities_data = pd.DataFrame()
 
-        for security in securities:
-            for b in security:
-                print(b.text)
+        total_notes = int(
+            self._wait_for_element(
+                tag='class name',
+                locator='m-u-fs-4',
+                timeout=5,
+            ).text.split(' Sets')[0]
+        )
+
+        for i in range(quantity):
+            if i >= total_notes - 1:
+                break
+
+            security = securities[i]
+
+            isin = security.find_element(
+                by='xpath',
+                value='//a[@data-testid="note-isin"]',
+            )
+
+            loan_type = security.find_element(
+                by='xpath',
+                value='//a[@data-testid="note-isin"]/following-sibling::div[1]',
+            )
+
+            notes_values = security.find_elements(
+                by='class name',
+                value='m-u-d--md-none m-u-color-1-55--text',
+            )
 
             parsed_security = {
-                'isin': security[0],
-                'type': security[1],
-                'risk_score': security[2],
-                'lending_company': security[3],
-                'legal_entity': security[4],
-                'interest_rate': security[5],
-                'purchase_date': security[6],
-                'invested_amount': security[7],
-                'received_payments': security[8],
-                'pending_payments': security[9],
+                'isin': isin.text.strip(),
+                'type': loan_type,
+                'risk_score': int(security.find_element(by='class name', value='score-value').text.strip()),
+                'lending_company': first_section[0].text.strip(),
+                'legal_entity': first_section[1].text.strip(),
+                'interest_rate': security,
+                'purchase_date': security,
+                'invested_amount': security,
+                'received_payments': security,
+                'pending_payments': security,
                 'in_recovery': 1,
                 'currency': 1,
             }
+
+            print(parsed_security)
+
+            break
 
             if current:
                 current_fields = {
                     'remaining_term': 1,
                     'outstanding_principal': 2,
                     'next_payment_amount': 3,
-                    'next_payment_date': 4,
+                    'next_payment_date': first_section[2],
                 }
 
                 parsed_security.update(current_fields)
@@ -366,9 +398,9 @@ class API:
 
             securities_data.append(parsed_security, ignore_index=True)
 
-        print(securities)
+        print(securities_data)
 
-        return securities
+        return securities_data
 
     def get_loans(self, raw: bool = False) -> List[dict]:
         pass
@@ -391,13 +423,21 @@ class API:
         self.__driver.find_element(by='xpath', value='//button[@type="submit"]').click()
 
         if self.__tfa_secret is None:
-            return
+            # Wait for overview page to be displayed to mark the end of the login process
+            self._wait_for_element(
+                tag='id',
+                locator='header-wrapper',
+                timeout=15,
+            )
+
+            # Wait 2 seconds before any further action to avoid Access Denied by Cloudflare
+            time.sleep(2)
 
         try:
             iframe = self._wait_for_element(
                 tag='xpath',
                 locator='//iframe[@title="recaptcha challenge expires in two minutes"]',
-                timeout=5,
+                timeout=3,
             )
 
             self._resolve_captcha(iframe=iframe)
@@ -426,31 +466,14 @@ class API:
             value='//button[@type="submit"]',
         ).click()
 
-        # If Captcha was already solved previously, skip waiting for new iframe
-        if self.__captcha_resolved:
-            # Wait for overview page to be displayed to mark the end of the login process
-            self._wait_for_element(
-                tag='id',
-                locator='header-wrapper',
-                timeout=15,
-            )
-
-            return
-
         try:
-            time.sleep(5)
-
-            iframes = self.__driver.find_elements(
-                by='xpath',
-                value='//iframe[@title="recaptcha challenge expires in two minutes"]',
+            iframe = self._wait_for_element(
+                tag='xpath',
+                locator='//iframe[@title="recaptcha challenge expires in two minutes"][@style="width: 400px; height: 580px;"]',
+                timeout=3,
             )
 
-            print(iframes)
-
-            self._resolve_captcha(iframe=iframes[-1])
-
-        except RecaptchaException:
-            raise TimeoutException('CAPTCHA did not respond on time.')
+            self._resolve_captcha(iframe=iframe)
 
         except TimeoutException:
             # Wait for overview page to be displayed to mark the end of the login process
@@ -459,6 +482,9 @@ class API:
                 locator='header-wrapper',
                 timeout=15,
             )
+
+        # Wait 2 seconds before any further action to avoid Access Denied by Cloudflare
+        time.sleep(2)
 
     def logout(self) -> None:
         self._make_request(url=ENDPOINTS.API_LOGOUT_URI)
@@ -518,18 +544,23 @@ class API:
         with sr.AudioFile(wav_file) as source:
             audio = recognizer.listen(source)
 
-            recognized_text = recognizer.recognize_google(audio)
+            try:
+                recognized_text = recognizer.recognize_google(audio)
+
+            except speech_recognition.UnknownValueError:
+                raise RecaptchaException('Failed to automatically solve Captcha, try again.')
 
         self._cleanup(tmp_files)
 
         self.__driver.find_element(by='id', value='audio-response').send_keys(recognized_text)
 
-        self.__driver.find_element(
-            by='id',
-            value='recaptcha-verify-button',
-        ).click()
+        verify_button = self._wait_for_element(
+            tag='id',
+            locator='recaptcha-verify-button',
+            timeout=3,
+        )
 
-        self.__captcha_resolved = True
+        self._js_click(verify_button)
 
         self.__driver.switch_to.default_content()
 
@@ -561,11 +592,13 @@ class API:
             tag: str,
             locator: str,
             timeout: int,
+            multiple: bool = False,
     ) -> Union[WebElement, List[WebElement]]:
         """
         :param tag: Tag to get element by (id, class name, xpath, tag name, etc.)
         :param locator: Value of the tag (Example: tag -> id, locator -> button-id)
         :param timeout: Time to wait for element before raising TimeoutError
+        :param multiple: Specify whether to return multiple web elements that match tag and locator
         :return: Web element specified by tag and locator
         :raises TimeoutException: If the element is not located within the desired time span
         """
@@ -573,6 +606,9 @@ class API:
         element_attributes = (tag, locator)
 
         WebDriverWait(self.__driver, timeout).until(ec.visibility_of_element_located(element_attributes))
+
+        if multiple:
+            return self.__driver.find_elements(by=tag, value=locator)
 
         return self.__driver.find_element(by=tag, value=locator)
 
@@ -587,7 +623,7 @@ class API:
     def _create_driver() -> WebDriver:
         options, service = webdriver.ChromeOptions(), Service(ChromeDriverManager().install())
 
-        options.add_argument("--headless")
+        # options.add_argument("--headless")
         options.add_argument("--window-size=1920,1080")
 
         options.add_argument('--start-maximized')
@@ -610,25 +646,21 @@ class API:
 if __name__ == '__main__':
     t1 = time.time()
 
-    try:
-        mintos_api = API(
-            email=os.getenv(key='email'),
-            password=os.getenv(key='password'),
-            tfa_secret=os.getenv(key='tfa_secret'),
-        )
-
-    except TimeoutException:
-        raise NetworkException('Check your internet connection.')
+    mintos_api = API(
+        email=os.getenv(key='email'),
+        password=os.getenv(key='password'),
+        tfa_secret=os.getenv(key='tfa_secret'),
+    )
 
     print(time.time() - t1)
 
-    print(mintos_api.get_portfolio_data(currency='EUR'))
+    # print(mintos_api.get_portfolio_data(currency='EUR'))
 
-    print(mintos_api.get_net_annual_return(currency='EUR'))
+    # print(mintos_api.get_net_annual_return(currency='EUR'))
 
-    print(mintos_api.get_lending_companies())
+    # print(mintos_api.get_lending_companies())
 
-    print(mintos_api.get_currencies())
+    # print(mintos_api.get_currencies())
 
     print(mintos_api.get_investments(currency='EUR'))
 

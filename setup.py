@@ -2,14 +2,14 @@ from setuptools import setup, find_packages
 
 
 setup(
-    name='recaptchav3py',
-    version='0.0.2',
+    name='mintospy',
+    version='0.0.1',
     license='MIT',
     author='Tomás Perestrelo',
     author_email='tomasperestrelo21@gmail.com',
     packages=find_packages(exclude=('tests*', 'testing*')),
     url='https://github.com/thicccat688/mintospy',
-    download_url='https://pypi.org/project/mintospy/',
+    download_url='https://pypi.org/project/mintospy',
     keywords='python, api, api-wrapper, mintos',
     long_description=open('README.md', 'r').read(),
     long_description_content_type='text/markdown',
