@@ -13,6 +13,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 from pydub import AudioSegment
 from typing import Union, List
 from datetime import datetime
+from bs4 import BeautifulSoup
 import speech_recognition as sr
 import pandas as pd
 import requests
@@ -107,8 +108,6 @@ class API:
             api=True,
         )
 
-        print(data)
-
         return data.get('items')
 
     def get_lending_companies(self) -> List[dict]:
@@ -159,23 +158,24 @@ class API:
         :param amortization_methods: Amortization type of notes (Full, partial, interest-only, or bullet)
         :param isin: ISIN of security
         :param late_loan_exposure: Late loan exposure of notes (0_20 for 0-20%, 20_40 for 20-40%, and so on)
-        :param lending_companies:
-        :param lender_statuses:
-        :param listed_for_sale:
-        :param max_interest_rate:
-        :param min_interest_rate:
-        :param loan_types:
-        :param risk_scores:
-        :param strategies:
-        :param max_term:
-        :param min_term:
-        :param max_purchased_date:
-        :param min_purchased_date:
-        :param current:
-        :param include_manual_investments:
-        :param ascending_sort:
-        :param raw:
-        :return:
+        :param lending_companies: Only return notes issued by specified lending companies
+        :param lender_statuses: Only return notes from lenders in a certain state (Active, suspended, or in default)
+        :param listed_for_sale: Specify whether to return notes that are on sale in the secondary market or not
+        :param max_interest_rate: Only return notes up to this maximum interest rate
+        :param min_interest_rate: Only return notes up to this minimum interest rate
+        :param loan_types: Only return notes composed of certain loan types
+        (agricultural, business, car, invoice_financing, mortgage, pawnbroking, personal, short_term)
+        :param risk_scores: Only returns notes of a certain risk score (1-10 or "SW" for notes with suspended rating)
+        :param strategies: Only return notes that were invested in with certain strategies
+        :param max_term: Only return notes up to a maximum term
+        :param min_term: Only return notes up to a minimum term
+        :param max_purchased_date: Only returns notes purchased before date
+        :param min_purchased_date: Only returns notes purchased after date
+        :param current: Returns current notes in portfolio if set to true, otherwise returns finished investments
+        :param include_manual_investments: Include notes that were purchased manually, instead of by auto invest
+        :param ascending_sort: Sort notes in ascending order based on "sort" argument if True, otherwise sort descending
+        :param raw: Return raw notes JSON if set to True, or returns pandas dataframe of notes if set to False
+        :return: Pandas DataFrame or raw JSON of notes (Chosen in the "raw" argument)
         """
 
         currency_iso_code = CONSTANTS.get_currency_iso(currency)
@@ -314,13 +314,64 @@ class API:
             params=investment_params,
         )
 
-        securities = Utils.get_elements(
-            markup=investments,
-            tag='class',
-            attrs={'class': 'mw-u-o-hidden mw-u-width-full m-u-to-ellipsis'},
+        securities = investments.find_all(
+            tag='div',
+            attrs={'data-testid': 'note-series-item'},
         )
 
-        return list(map(lambda obj: obj.text, securities))
+        if raw:
+            securities_data = []
+
+        else:
+            securities_data = pd.DataFrame()
+
+        for security in securities:
+            for b in security:
+                print(b.text)
+
+            parsed_security = {
+                'isin': security[0],
+                'type': security[1],
+                'risk_score': security[2],
+                'lending_company': security[3],
+                'legal_entity': security[4],
+                'interest_rate': security[5],
+                'purchase_date': security[6],
+                'invested_amount': security[7],
+                'received_payments': security[8],
+                'pending_payments': security[9],
+                'in_recovery': 1,
+                'currency': 1,
+            }
+
+            if current:
+                current_fields = {
+                    'remaining_term': 1,
+                    'outstanding_principal': 2,
+                    'next_payment_amount': 3,
+                    'next_payment_date': 4,
+                }
+
+                parsed_security.update(current_fields)
+
+            else:
+                finished_fields = {'finished_date': 1}
+
+                parsed_security.update(finished_fields)
+
+            if raw:
+                pass
+
+            if not raw:
+                securities_data = 1
+
+                continue
+
+            securities_data.append(parsed_security)
+
+        print(securities)
+
+        return securities
 
     def get_loans(self, raw: bool = False) -> List[dict]:
         pass
@@ -364,7 +415,7 @@ class API:
         self._wait_for_element(
             tag='xpath',
             locator='//label[text()=" 6-digit code "]',
-            timeout=5,
+            timeout=10,
         )
 
         self._wait_for_element(
@@ -378,14 +429,28 @@ class API:
             value='//button[@type="submit"]',
         ).click()
 
-        try:
-            iframe = self._wait_for_element(
-                tag='xpath',
-                locator='//iframe[@title="recaptcha challenge expires in two minutes"][contains(@style,"width:400px")]',
-                timeout=5,
+        # If Captcha was already solved previously, skip waiting for new iframe
+        if self.__captcha_resolved:
+            # Wait for overview page to be displayed to mark the end of the login process
+            self._wait_for_element(
+                tag='id',
+                locator='header-wrapper',
+                timeout=15,
             )
 
-            self._resolve_captcha(iframe=iframe)
+            return
+
+        try:
+            time.sleep(5)
+
+            iframes = self.__driver.find_elements(
+                by='xpath',
+                value='//iframe[@title="recaptcha challenge expires in two minutes"]',
+            )
+
+            print(iframes)
+
+            self._resolve_captcha(iframe=iframes[-1])
 
         except RecaptchaException:
             raise TimeoutException('CAPTCHA did not respond on time.')
@@ -395,7 +460,7 @@ class API:
             self._wait_for_element(
                 tag='id',
                 locator='header-wrapper',
-                timeout=10,
+                timeout=15,
             )
 
     def logout(self) -> None:
@@ -469,12 +534,14 @@ class API:
 
         self.__captcha_resolved = True
 
+        self.__driver.switch_to.default_content()
+
     def _make_request(
             self,
             url: str,
             params: Union[dict, List[tuple]] = None,
             api: bool = False,
-    ) -> Union[list, dict, str]:
+    ) -> Union[BeautifulSoup, dict, str]:
         """
         Request handler with built-in exception handling for Mintos' API
         :param url: URL of endpoint to call
@@ -490,7 +557,7 @@ class API:
         if api:
             return Utils.parse_api_response(self.__driver.page_source)
 
-        return self.__driver.page_source
+        return BeautifulSoup(self.__driver.page_source, 'html.parser')
 
     def _wait_for_element(
             self,
@@ -523,11 +590,16 @@ class API:
     def _create_driver() -> WebDriver:
         options, service = webdriver.ChromeOptions(), Service(ChromeDriverManager().install())
 
-        # options.headless = True
+        options.add_argument("--headless")
+        options.add_argument("--window-size=1920,1080")
 
-        options.add_experimental_option('detach', True)
+        options.add_argument('--start-maximized')
+        options.add_argument('--disable-gpu')
 
-        options.add_argument('start-maximized')
+        options.add_argument('--no-sandbox')
+        options.add_argument("--disable-extensions")
+
+        options.add_argument('disable-infobars')
 
         return webdriver.Chrome(options=options, service=service)
 

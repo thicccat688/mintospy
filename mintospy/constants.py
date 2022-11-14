@@ -116,7 +116,7 @@ class CONSTANTS:
         'Hipocredit': 1,
     }
 
-    AMORTIZATION_TYPES = {
+    AMORTIZATION_METHODS = {
         'full': 1,
         'partial': 2,
         'interest_only': 4,
@@ -196,4 +196,8 @@ class CONSTANTS:
         """
 
         if method not in cls.AMORTIZATION_METHODS:
-            raise ValueError(f'Amortization method must be one of the following : {", ".join(cls.AMORTIZATION_METHODS)}')
+            raise ValueError(
+                f'Amortization method must be one of the following : {", ".join(cls.AMORTIZATION_METHODS)}',
+            )
+
+        return cls.AMORTIZATION_METHODS[method]
