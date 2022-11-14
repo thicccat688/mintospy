@@ -360,14 +360,11 @@ class API:
                 parsed_security.update(finished_fields)
 
             if raw:
-                pass
-
-            if not raw:
-                securities_data = 1
+                securities_data.append(parsed_security)
 
                 continue
 
-            securities_data.append(parsed_security)
+            securities_data.append(parsed_security, ignore_index=True)
 
         print(securities)
 
@@ -541,7 +538,7 @@ class API:
             url: str,
             params: Union[dict, List[tuple]] = None,
             api: bool = False,
-    ) -> Union[BeautifulSoup, dict, str]:
+    ) -> any:
         """
         Request handler with built-in exception handling for Mintos' API
         :param url: URL of endpoint to call
