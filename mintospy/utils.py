@@ -35,7 +35,7 @@ class Utils:
 
     @classmethod
     def str_to_date(cls, __str: str) -> date:
-        return datetime.strptime(__str.strip().replace('.', ''), '%d%m%Y',).date()
+        return datetime.strptime(__str.strip().replace('.', ''), '%d%m%Y').date()
 
     @classmethod
     def mount_url(cls, url: str, params: Union[dict, List[tuple]]) -> str:

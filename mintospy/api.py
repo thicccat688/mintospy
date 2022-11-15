@@ -340,9 +340,10 @@ class API:
 
             security = securities[i]
 
-            isin = security.find_element(
-                by='xpath',
-                value='//a[@data-testid="note-isin"]',
+            isin = self._wait_for_element(
+                tag='xpath',
+                locator='//a[@data-testid="note-isin"]',
+                timeout=5,
             )
 
             loan_type = security.find_element(
@@ -433,7 +434,7 @@ class API:
             else:
                 finished_date = security.find_element(
                     by='xpath',
-                    value='//span[text()=" Finished "]/following-sibling::span[1]',
+                    value='//span[normalize-space()="Finished"]/../span[1]',
                 )
 
                 finished_fields = {
