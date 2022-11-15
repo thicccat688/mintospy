@@ -316,7 +316,7 @@ class API:
         securities = self._wait_for_element(
             tag='xpath',
             locator='//div[@data-testid="note-series-item"]',
-            timeout=5,
+            timeout=10,
             multiple=True,
         )
 
@@ -352,39 +352,34 @@ class API:
 
             risk_score = security.find_element(by='class name', value='score-value')
 
-            lenders = security.find_element(
+            country = security.find_element(
                 by='xpath',
-                value='//span[normalize-space()="Lending company / Legal entity"]',
+                value='(//*[name()="svg"]/*[name()="title"])[1]',
             )
 
-            country = lenders.find_element(
+            lenders = security.find_elements(
                 by='xpath',
-                value='//title',
-            )
-
-            lenders = lenders.find_elements(
-                by='class name',
-                value='mw-u-o-hidden m-u-to-ellipsis mw-u-width-full',
+                value='//span[@class="mw-u-o-hidden m-u-to-ellipsis mw-u-width-full"]',
             )
 
             interest_rate = security.find_element(
                 by='xpath',
-                value='//span[text()=" Interest rate "]/following-sibling::span[1]',
+                value='//span[normalize-space()="Interest rate"]/../span[2]',
             )
 
             purchase_date = security.find_element(
                 by='xpath',
-                value='//span[text()=" Purchase date "]/following-sibling::div[1]/span',
+                value='//span[normalize-space()="Purchase date"]/../span[2]/div/span',
             )
 
             invested_amount = security.find_element(
                 by='xpath',
-                value='//span[text()=" Invested amount "]/following-sibling::div[1]/span',
+                value='//span[normalize-space()="Invested amount"]/../span[2]/div/span',
             )
 
             received_payments = security.find_element(
                 by='xpath',
-                value='//span[text()=" Received payments "]/following-sibling::div[1]/span',
+                value='//span[normalize-space()="Received payments"]/../span[2]/div/span',
             )
 
             pending_payments, in_recovery = security.find_elements(
@@ -396,13 +391,13 @@ class API:
 
             parsed_security = {
                 'isin': isin.text.strip(),
-                'type': loan_type,
+                'type': loan_type.text.strip(),
                 'risk_score': int(risk_score.text.strip()),
                 'lending_company': lenders[0].text.strip(),
                 'legal_entity': lenders[1].text.strip(),
-                'country': country.text.strip(),
+                'country': Utils.get_svg_title(country),
                 'interest_rate': float(interest_rate.text.strip().replace('%', '')),
-                'purchase_date': datetime.strptime(purchase_date.text.strip().replace('.', ''), '%d%m%Y').date(),
+                'purchase_date': Utils.str_to_date(purchase_date.text),
                 'invested_amount': Utils.parse_currency_number(invested_amount.text)['amount'],
                 'received_payments': Utils.parse_currency_number(received_payments.text)['amount'],
                 'pending_payments': Utils.parse_currency_number(pending_payments.text)['amount'],
@@ -413,12 +408,12 @@ class API:
             if current:
                 remaining_term = security.find_element(
                     by='xpath',
-                    value='//span[text()=" Remaining term"]/following-sibling::span[1]',
+                    value='//span[normalize-space()="Remaining term"]/../span[2]',
                 )
 
                 outstanding_principal = security.find_element(
                     by='xpath',
-                    value='//span[text()=" Outstanding Principal "]/following-sibling::div[1]/span',
+                    value='//span[normalize-space()="Outstanding Principal"]/../span[2]/div/span',
                 )
 
                 next_payment_date, next_payment_amount = security.find_elements(
@@ -426,18 +421,11 @@ class API:
                     value='date-value',
                 )
 
-                t, v = security.find_elements(
-                    by='xpath',
-                    value='//span[@class="date-value"]',
-                )
-
-                print(t.text, v.text)
-
                 current_fields = {
                     'remaining_term': remaining_term.text.strip(),
-                    'outstanding_principal': Utils.parse_currency_number(outstanding_principal.text),
-                    'next_payment_date': datetime.strptime(next_payment_date.text.strip(), '%d%m%Y').date(),
-                    'next_payment_amount': Utils.parse_currency_number(next_payment_amount.text),
+                    'outstanding_principal': Utils.parse_currency_number(outstanding_principal.text)['amount'],
+                    'next_payment_date': Utils.str_to_date(next_payment_date.text),
+                    'next_payment_amount': Utils.parse_currency_number(next_payment_amount.text)['amount'],
                 }
 
                 parsed_security.update(current_fields)
@@ -460,8 +448,6 @@ class API:
                 continue
 
             securities_data.append(parsed_security, ignore_index=True)
-
-        print(securities_data)
 
         return securities_data
 
@@ -604,6 +590,9 @@ class API:
 
         recognizer = sr.Recognizer()
 
+        # Disable dynamic energy thershold to avoid failed Captcha audio transcription
+        recognizer.dynamic_energy_threshold = False
+
         with sr.AudioFile(wav_file) as source:
             audio = recognizer.listen(source)
 
@@ -620,7 +609,7 @@ class API:
         verify_button = self._wait_for_element(
             tag='id',
             locator='recaptcha-verify-button',
-            timeout=3,
+            timeout=5,
         )
 
         self._js_click(verify_button)

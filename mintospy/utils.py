@@ -2,6 +2,8 @@ from mintospy.constants import CONSTANTS
 from typing import Generator, Union
 from bs4 import BeautifulSoup
 from bs4.element import ResultSet
+from selenium.webdriver.remote.webelement import WebElement
+from datetime import datetime, date
 from typing import List
 import json
 
@@ -21,6 +23,19 @@ class Utils:
             'amount': amount,
             'currency': f'{currency} ({currency_sign})',
         }
+
+    @classmethod
+    def get_svg_title(cls, svg: WebElement) -> str:
+        text = svg.get_attribute('innerHTML')
+
+        if not text:
+            raise ValueError('SVG does not title text.')
+
+        return text.strip()
+
+    @classmethod
+    def str_to_date(cls, __str: str) -> date:
+        return datetime.strptime(__str.strip().replace('.', ''), '%d%m%Y',).date()
 
     @classmethod
     def mount_url(cls, url: str, params: Union[dict, List[tuple]]) -> str:
