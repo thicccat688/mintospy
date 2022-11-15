@@ -11,6 +11,18 @@ class CONSTANTS:
         'CZK': 203,
     }
 
+    CURRENCY_SYMBOLS = {
+        'zł': 'PLN',
+        'ლ': 'GEL',
+        '€': 'EUR',
+        '£': 'GBP',
+        'kr': 'SEK',
+        'Mex$': 'MXN',
+        '₸': 'KZT',
+        'Kr.': 'DKK',
+        'Kč': 'CZK',
+    }
+
     COUNTRIES = {
         'Namibia': 249,
         'Turkey': 247,

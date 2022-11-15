@@ -1,5 +1,3 @@
-import speech_recognition
-
 from mintospy.constants import CONSTANTS
 from mintospy.endpoints import ENDPOINTS
 from mintospy.exceptions import RecaptchaException, NetworkException
@@ -14,7 +12,7 @@ from selenium.common import TimeoutException
 from webdriver_manager.chrome import ChromeDriverManager
 from pydub import AudioSegment
 from typing import Union, List
-from datetime import datetime
+from datetime import datetime, date
 from bs4 import BeautifulSoup
 import speech_recognition as sr
 import pandas as pd
@@ -352,42 +350,107 @@ class API:
                 value='//a[@data-testid="note-isin"]/following-sibling::div[1]',
             )
 
-            notes_values = security.find_elements(
-                by='class name',
-                value='m-u-d--md-none m-u-color-1-55--text',
+            risk_score = security.find_element(by='class name', value='score-value')
+
+            lenders = security.find_element(
+                by='xpath',
+                value='//span[normalize-space()="Lending company / Legal entity"]',
             )
+
+            country = lenders.find_element(
+                by='xpath',
+                value='//title',
+            )
+
+            lenders = lenders.find_elements(
+                by='class name',
+                value='mw-u-o-hidden m-u-to-ellipsis mw-u-width-full',
+            )
+
+            interest_rate = security.find_element(
+                by='xpath',
+                value='//span[text()=" Interest rate "]/following-sibling::span[1]',
+            )
+
+            purchase_date = security.find_element(
+                by='xpath',
+                value='//span[text()=" Purchase date "]/following-sibling::div[1]/span',
+            )
+
+            invested_amount = security.find_element(
+                by='xpath',
+                value='//span[text()=" Invested amount "]/following-sibling::div[1]/span',
+            )
+
+            received_payments = security.find_element(
+                by='xpath',
+                value='//span[text()=" Received payments "]/following-sibling::div[1]/span',
+            )
+
+            pending_payments, in_recovery = security.find_elements(
+                by='class name',
+                value='m-u-nowrap',
+            )
+
+            currency = Utils.parse_currency_number(invested_amount.text)['currency']
 
             parsed_security = {
                 'isin': isin.text.strip(),
                 'type': loan_type,
-                'risk_score': int(security.find_element(by='class name', value='score-value').text.strip()),
-                'lending_company': first_section[0].text.strip(),
-                'legal_entity': first_section[1].text.strip(),
-                'interest_rate': security,
-                'purchase_date': security,
-                'invested_amount': security,
-                'received_payments': security,
-                'pending_payments': security,
-                'in_recovery': 1,
-                'currency': 1,
+                'risk_score': int(risk_score.text.strip()),
+                'lending_company': lenders[0].text.strip(),
+                'legal_entity': lenders[1].text.strip(),
+                'country': country.text.strip(),
+                'interest_rate': float(interest_rate.text.strip().replace('%', '')),
+                'purchase_date': datetime.strptime(purchase_date.text.strip().replace('.', ''), '%d%m%Y').date(),
+                'invested_amount': Utils.parse_currency_number(invested_amount.text)['amount'],
+                'received_payments': Utils.parse_currency_number(received_payments.text)['amount'],
+                'pending_payments': Utils.parse_currency_number(pending_payments.text)['amount'],
+                'in_recovery': Utils.parse_currency_number(in_recovery.text)['amount'],
+                'currency': currency,
             }
 
-            print(parsed_security)
-
-            break
-
             if current:
+                remaining_term = security.find_element(
+                    by='xpath',
+                    value='//span[text()=" Remaining term"]/following-sibling::span[1]',
+                )
+
+                outstanding_principal = security.find_element(
+                    by='xpath',
+                    value='//span[text()=" Outstanding Principal "]/following-sibling::div[1]/span',
+                )
+
+                next_payment_date, next_payment_amount = security.find_elements(
+                    by='class name',
+                    value='date-value',
+                )
+
+                t, v = security.find_elements(
+                    by='xpath',
+                    value='//span[@class="date-value"]',
+                )
+
+                print(t.text, v.text)
+
                 current_fields = {
-                    'remaining_term': 1,
-                    'outstanding_principal': 2,
-                    'next_payment_amount': 3,
-                    'next_payment_date': first_section[2],
+                    'remaining_term': remaining_term.text.strip(),
+                    'outstanding_principal': Utils.parse_currency_number(outstanding_principal.text),
+                    'next_payment_date': datetime.strptime(next_payment_date.text.strip(), '%d%m%Y').date(),
+                    'next_payment_amount': Utils.parse_currency_number(next_payment_amount.text),
                 }
 
                 parsed_security.update(current_fields)
 
             else:
-                finished_fields = {'finished_date': 1}
+                finished_date = security.find_element(
+                    by='xpath',
+                    value='//span[text()=" Finished "]/following-sibling::span[1]',
+                )
+
+                finished_fields = {
+                    'finished_date': datetime.strptime(finished_date.text.strip().replace('.', ''), '%d%m%Y').date(),
+                }
 
                 parsed_security.update(finished_fields)
 
@@ -547,7 +610,7 @@ class API:
             try:
                 recognized_text = recognizer.recognize_google(audio)
 
-            except speech_recognition.UnknownValueError:
+            except sr.UnknownValueError:
                 raise RecaptchaException('Failed to automatically solve Captcha, try again.')
 
         self._cleanup(tmp_files)

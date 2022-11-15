@@ -1,3 +1,4 @@
+from mintospy.constants import CONSTANTS
 from typing import Generator, Union
 from bs4 import BeautifulSoup
 from bs4.element import ResultSet
@@ -6,6 +7,21 @@ import json
 
 
 class Utils:
+    @classmethod
+    def parse_currency_number(cls, __str: str) -> dict:
+        __str = __str.strip()
+
+        currency_sign = __str[0]
+
+        currency = CONSTANTS.CURRENCY_SYMBOLS[currency_sign]
+
+        amount = cls._str_to_float(__str.replace(currency_sign, '').strip())
+
+        return {
+            'amount': amount,
+            'currency': f'{currency} ({currency_sign})',
+        }
+
     @classmethod
     def mount_url(cls, url: str, params: Union[dict, List[tuple]]) -> str:
         query_string = cls._mount_query_string(params)
