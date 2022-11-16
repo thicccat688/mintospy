@@ -497,15 +497,11 @@ class API:
             self.__solver.solve_recaptcha_v2_challenge(iframe=iframe)
 
         except TimeoutException:
-            try:
-                self._wait_for_element(
-                    tag='xpath',
-                    locator='//label[text()=" 6-digit code "]',
-                    timeout=15,
-                )
-
-            except TimeoutException:
-                self.__driver.save_screenshot('error_image.png')
+            self._wait_for_element(
+                tag='xpath',
+                locator='//label[text()=" 6-digit code "]',
+                timeout=15,
+            )
 
         self._wait_for_element(
             tag='xpath',
