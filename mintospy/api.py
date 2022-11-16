@@ -1,18 +1,19 @@
 from mintospy.constants import CONSTANTS
 from mintospy.endpoints import ENDPOINTS
-from mintospy.exceptions import RecaptchaException, NetworkException
+from mintospy.exceptions import RecaptchaException
 from mintospy.utils import Utils
-from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.chrome.webdriver import WebDriver
 from selenium.common import TimeoutException
+from selenium import webdriver
 from webdriver_manager.chrome import ChromeDriverManager
+from selenium_recaptcha_solver import API as RECAPTCHA_API
 from pydub import AudioSegment
 from typing import Union, List
-from datetime import datetime, date
+from datetime import datetime
 from bs4 import BeautifulSoup
 import speech_recognition as sr
 import pandas as pd
@@ -55,6 +56,9 @@ class API:
         # Initialise web driver session
         self.__driver = self._create_driver()
 
+        # Intiailise RecaptchaV2 solver object
+        self.__solver = RECAPTCHA_API(driver=self.__driver)
+
         # Automatically authenticate to Mintos API upon API object initialization
         self.login()
 
@@ -71,8 +75,6 @@ class API:
             params={'currencyIsoCode': currency_iso_code},
             api=True,
         )
-
-        print(self.__driver.page_source, data)
 
         return {k: float(v) for (k, v) in data.items()}
 
@@ -316,15 +318,11 @@ class API:
         securities = self._wait_for_element(
             tag='xpath',
             locator='//div[@data-testid="note-series-item"]',
-            timeout=10,
+            timeout=25,
             multiple=True,
         )
 
-        if raw:
-            securities_data = []
-
-        else:
-            securities_data = pd.DataFrame()
+        securities_data = []
 
         total_notes = int(
             self._wait_for_element(
@@ -417,17 +415,28 @@ class API:
                     value='//span[normalize-space()="Outstanding Principal"]/../span[2]/div/span',
                 )
 
-                next_payment_date, next_payment_amount = security.find_elements(
-                    by='class name',
-                    value='date-value',
-                )
+                try:
+                    next_payment_date, next_payment_amount = security.find_elements(
+                        by='class name',
+                        value='date-value',
+                    )
 
-                current_fields = {
-                    'remaining_term': remaining_term.text.strip(),
-                    'outstanding_principal': Utils.parse_currency_number(outstanding_principal.text)['amount'],
-                    'next_payment_date': Utils.str_to_date(next_payment_date.text),
-                    'next_payment_amount': Utils.parse_currency_number(next_payment_amount.text)['amount'],
-                }
+                    current_fields = {
+                        'remaining_term': remaining_term,
+                        'outstanding_principal': Utils.parse_currency_number(outstanding_principal.text)['amount'],
+                        'next_payment_date': Utils.str_to_date(next_payment_date.text),
+                        'next_payment_amount': Utils.parse_currency_number(next_payment_amount.text)['amount'],
+                    }
+
+                except ValueError:
+                    next_payment_date, next_payment_amount = 'N/A', 'N/A'
+
+                    current_fields = {
+                        'remaining_term': remaining_term,
+                        'outstanding_principal': Utils.parse_currency_number(outstanding_principal.text)['amount'],
+                        'next_payment_date': next_payment_date,
+                        'next_payment_amount': next_payment_amount,
+                    }
 
                 parsed_security.update(current_fields)
 
@@ -443,14 +452,9 @@ class API:
 
                 parsed_security.update(finished_fields)
 
-            if raw:
-                securities_data.append(parsed_security)
+            securities_data.append(parsed_security)
 
-                continue
-
-            securities_data.append(parsed_security, ignore_index=True)
-
-        return securities_data
+        return securities_data if raw else pd.DataFrame(securities_data)
 
     def get_loans(self, raw: bool = False) -> List[dict]:
         pass
@@ -487,22 +491,26 @@ class API:
             iframe = self._wait_for_element(
                 tag='xpath',
                 locator='//iframe[@title="recaptcha challenge expires in two minutes"]',
-                timeout=3,
+                timeout=5,
             )
 
-            self._resolve_captcha(iframe=iframe)
+            self.__solver.solve_recaptcha_v2_challenge(iframe=iframe)
 
         except TimeoutException:
-            self._wait_for_element(
-                tag='xpath',
-                locator='//label[text()=" 6-digit code "]',
-                timeout=10,
-            )
+            try:
+                self._wait_for_element(
+                    tag='xpath',
+                    locator='//label[text()=" 6-digit code "]',
+                    timeout=15,
+                )
+
+            except TimeoutException:
+                self.__driver.save_screenshot('error_image.png')
 
         self._wait_for_element(
             tag='xpath',
-            locator='//label[text()=" 6-digit code "]',
-            timeout=10,
+            locator='//label[normalize-space()="6-digit code"]',
+            timeout=15,
         )
 
         self._wait_for_element(
@@ -520,17 +528,17 @@ class API:
             iframe = self._wait_for_element(
                 tag='xpath',
                 locator='//iframe[@title="recaptcha challenge expires in two minutes"][@style="width: 400px; height: 580px;"]',
-                timeout=3,
+                timeout=5,
             )
 
-            self._resolve_captcha(iframe=iframe)
+            self.__solver.solve_recaptcha_v2_challenge(iframe=iframe)
 
         except TimeoutException:
             # Wait for overview page to be displayed to mark the end of the login process
             self._wait_for_element(
                 tag='id',
                 locator='header-wrapper',
-                timeout=15,
+                timeout=20,
             )
 
         # Wait 2 seconds before any further action to avoid Access Denied by Cloudflare
@@ -685,8 +693,6 @@ class API:
         options.add_argument('--no-sandbox')
         options.add_argument("--disable-extensions")
 
-        options.add_argument('disable-infobars')
-
         return webdriver.Chrome(options=options, service=service)
 
     @staticmethod
@@ -715,6 +721,10 @@ if __name__ == '__main__':
 
     # print(mintos_api.get_currencies())
 
+    t1 = time.time()
+
     print(mintos_api.get_investments(currency='EUR'))
+
+    print(time.time() - t1)
 
     mintos_api.logout()
