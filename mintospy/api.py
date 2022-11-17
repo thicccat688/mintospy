@@ -491,7 +491,7 @@ class API:
             iframe = self._wait_for_element(
                 tag='xpath',
                 locator='//iframe[@title="recaptcha challenge expires in two minutes"]',
-                timeout=5,
+                timeout=2,
             )
 
             self.__solver.solve_recaptcha_v2_challenge(iframe=iframe)
@@ -524,7 +524,7 @@ class API:
             iframe = self._wait_for_element(
                 tag='xpath',
                 locator='//iframe[@title="recaptcha challenge expires in two minutes"][@style="width: 400px; height: 580px;"]',
-                timeout=5,
+                timeout=2,
             )
 
             self.__solver.solve_recaptcha_v2_challenge(iframe=iframe)
