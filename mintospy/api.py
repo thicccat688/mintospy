@@ -20,6 +20,7 @@ import pandas as pd
 import requests
 import tempfile
 import warnings
+import pickle
 import pyotp
 import time
 import os
@@ -464,6 +465,20 @@ class API:
         Logs in to Mintos Marketplace via headless Chromium browser
         """
 
+        try:
+            cookies = pickle.load(open('cookies.pkl', 'rb'))
+
+            # Add all pickled cookies to selenium web driver
+            for cookie in cookies:
+                self.__driver.add_cookie(cookie)
+
+            print(self.__driver.get_cookies())
+
+            return
+
+        except EOFError:
+            pass
+
         self.__driver.get(ENDPOINTS.LOGIN_URI)
 
         self._wait_for_element(
@@ -539,6 +554,8 @@ class API:
 
         # Wait 2 seconds before any further action to avoid Access Denied by Cloudflare
         time.sleep(2)
+
+        pickle.dump(self.__driver.get_cookies(), open('cookies.pkl', 'wb'))
 
     def logout(self) -> None:
         self._make_request(url=ENDPOINTS.API_LOGOUT_URI)
@@ -680,7 +697,7 @@ class API:
     def _create_driver() -> WebDriver:
         options, service = webdriver.ChromeOptions(), Service(ChromeDriverManager().install())
 
-        # options.add_argument("--headless")
+        options.add_argument("--headless")
         options.add_argument("--window-size=1920,1080")
 
         options.add_argument('--start-maximized')
