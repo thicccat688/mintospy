@@ -37,6 +37,8 @@ class Utils:
 
                 driver.refresh()
 
+                time.sleep(2)
+
                 return True
 
         except (FileNotFoundError, EOFError):
@@ -72,66 +74,86 @@ class Utils:
 
     @classmethod
     async def parse_mintos_security(cls, security: WebElement, current: bool) -> dict:
-        isin = await cls.async_find_element(
-            element=security,
-            by='xpath',
-            value='//a[@data-testid="note-isin"]',
+        isin = await asyncio.create_task(
+            cls.async_find_element(
+                element=security,
+                by='xpath',
+                value='//a[@data-testid="note-isin"]',
+            )
         )
 
-        loan_type = await cls.async_find_element(
-            element=security,
-            by='xpath',
-            value='//a[@data-testid="note-isin"]/following-sibling::div[1]',
+        loan_type = await asyncio.create_task(
+            cls.async_find_element(
+                element=security,
+                by='xpath',
+                value='//a[@data-testid="note-isin"]/following-sibling::div[1]',
+            )
         )
 
-        risk_score = await cls.async_find_element(
-            element=security,
-            by='class name', 
-            value='score-value',
+        risk_score = await asyncio.create_task(
+            cls.async_find_element(
+                element=security,
+                by='class name',
+                value='score-value',
+            )
         )
 
-        country = await cls.async_find_element(
-            element=security,
-            by='xpath',
-            value='(//*[name()="svg"]/*[name()="title"])[1]',
+        country = await asyncio.create_task(
+            cls.async_find_element(
+                element=security,
+                by='xpath',
+                value='(//*[name()="svg"]/*[name()="title"])[1]',
+            )
         )
 
-        lenders = await cls.async_find_element(
-            element=security,
-            by='xpath',
-            value='//span[@class="mw-u-o-hidden m-u-to-ellipsis mw-u-width-full"]',
-            multiple=True,
+        lenders = await asyncio.create_task(
+            cls.async_find_element(
+                element=security,
+                by='xpath',
+                value='//span[@class="mw-u-o-hidden m-u-to-ellipsis mw-u-width-full"]',
+                multiple=True,
+            )
         )
 
-        interest_rate = await cls.async_find_element(
-            element=security,
-            by='xpath',
-            value='//span[normalize-space()="Interest rate"]/../span[2]',
+        interest_rate = await asyncio.create_task(
+            cls.async_find_element(
+                element=security,
+                by='xpath',
+                value='//span[normalize-space()="Interest rate"]/../span[2]',
+            )
         )
 
-        purchase_date = await cls.async_find_element(
-            element=security,
-            by='xpath',
-            value='//span[normalize-space()="Purchase date"]/../span[2]/div/span',
+        purchase_date = await asyncio.create_task(
+            cls.async_find_element(
+                element=security,
+                by='xpath',
+                value='//span[normalize-space()="Purchase date"]/../span[2]/div/span',
+            )
         )
 
-        invested_amount = await cls.async_find_element(
-            element=security,
-            by='xpath',
-            value='//span[normalize-space()="Invested amount"]/../span[2]/div/span',
+        invested_amount = await asyncio.create_task(
+            cls.async_find_element(
+                element=security,
+                by='xpath',
+                value='//span[normalize-space()="Invested amount"]/../span[2]/div/span',
+            )
         )
 
-        received_payments = await cls.async_find_element(
-            element=security,
-            by='xpath',
-            value='//span[normalize-space()="Received payments"]/../span[2]/div/span',
+        received_payments = await asyncio.create_task(
+            cls.async_find_element(
+                element=security,
+                by='xpath',
+                value='//span[normalize-space()="Received payments"]/../span[2]/div/span',
+            )
         )
 
-        pending_payments, in_recovery = await cls.async_find_element(
-            element=security,
-            by='class name',
-            value='m-u-nowrap',
-            multiple=True,
+        pending_payments, in_recovery = await asyncio.create_task(
+            cls.async_find_element(
+                element=security,
+                by='class name',
+                value='m-u-nowrap',
+                multiple=True,
+            )
         )
 
         currency = cls.parse_currency_number(invested_amount.text)['currency']
@@ -153,24 +175,30 @@ class Utils:
         }
 
         if current:
-            remaining_term = await cls.async_find_element(
-                element=security,
-                by='xpath',
-                value='//span[normalize-space()="Remaining term"]/../span[2]',
+            remaining_term = await asyncio.create_task(
+                cls.async_find_element(
+                    element=security,
+                    by='xpath',
+                    value='//span[normalize-space()="Remaining term"]/../span[2]',
+                )
             )
 
-            outstanding_principal = await cls.async_find_element(
-                element=security,
-                by='xpath',
-                value='//span[normalize-space()="Outstanding Principal"]/../span[2]/div/span',
+            outstanding_principal = await asyncio.create_task(
+                cls.async_find_element(
+                    element=security,
+                    by='xpath',
+                    value='//span[normalize-space()="Outstanding Principal"]/../span[2]/div/span',
+                )
             )
 
             try:
-                next_payment_date, next_payment_amount = await cls.async_find_element(
-                    element=security,
-                    by='class name',
-                    value='date-value',
-                    multiple=True,
+                next_payment_date, next_payment_amount = await asyncio.create_task(
+                    cls.async_find_element(
+                        element=security,
+                        by='class name',
+                        value='date-value',
+                        multiple=True,
+                    )
                 )
 
                 current_fields = {
@@ -193,10 +221,12 @@ class Utils:
             parsed_security.update(current_fields)
 
         else:
-            finished_date = await cls.async_find_element(
-                element=security,
-                by='xpath',
-                value='//span[normalize-space()="Finished"]/../span[1]',
+            finished_date = await asyncio.create_task(
+                cls.async_find_element(
+                    element=security,
+                    by='xpath',
+                    value='//span[normalize-space()="Finished"]/../span[1]',
+                )
             )
 
             finished_fields = {
@@ -215,7 +245,7 @@ class Utils:
             multiple: bool = False,
     ) -> Union[List[WebElement], WebElement]:
         if multiple:
-            return element.find_element(
+            return element.find_elements(
                 by=by,
                 value=value,
             )
