@@ -1,6 +1,5 @@
 from mintospy.constants import CONSTANTS
 from mintospy.endpoints import ENDPOINTS
-from mintospy.exceptions import RecaptchaException
 from mintospy.utils import Utils
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
@@ -11,15 +10,12 @@ from selenium.common import TimeoutException
 from selenium import webdriver
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium_recaptcha_solver import API as RECAPTCHA_API
-from pydub import AudioSegment
 from typing import Union, List
 from datetime import datetime
 from bs4 import BeautifulSoup
-import speech_recognition as sr
 import pandas as pd
-import requests
-import tempfile
 import warnings
+import asyncio
 import pickle
 import pyotp
 import time
@@ -323,8 +319,6 @@ class API:
             multiple=True,
         )
 
-        securities_data = []
-
         total_notes = int(
             self._wait_for_element(
                 tag='class name',
@@ -333,127 +327,7 @@ class API:
             ).text.split(' Sets')[0]
         )
 
-        for i in range(quantity):
-            if i >= total_notes - 1:
-                break
-
-            security = securities[i]
-
-            isin = self._wait_for_element(
-                tag='xpath',
-                locator='//a[@data-testid="note-isin"]',
-                timeout=5,
-            )
-
-            loan_type = security.find_element(
-                by='xpath',
-                value='//a[@data-testid="note-isin"]/following-sibling::div[1]',
-            )
-
-            risk_score = security.find_element(by='class name', value='score-value')
-
-            country = security.find_element(
-                by='xpath',
-                value='(//*[name()="svg"]/*[name()="title"])[1]',
-            )
-
-            lenders = security.find_elements(
-                by='xpath',
-                value='//span[@class="mw-u-o-hidden m-u-to-ellipsis mw-u-width-full"]',
-            )
-
-            interest_rate = security.find_element(
-                by='xpath',
-                value='//span[normalize-space()="Interest rate"]/../span[2]',
-            )
-
-            purchase_date = security.find_element(
-                by='xpath',
-                value='//span[normalize-space()="Purchase date"]/../span[2]/div/span',
-            )
-
-            invested_amount = security.find_element(
-                by='xpath',
-                value='//span[normalize-space()="Invested amount"]/../span[2]/div/span',
-            )
-
-            received_payments = security.find_element(
-                by='xpath',
-                value='//span[normalize-space()="Received payments"]/../span[2]/div/span',
-            )
-
-            pending_payments, in_recovery = security.find_elements(
-                by='class name',
-                value='m-u-nowrap',
-            )
-
-            currency = Utils.parse_currency_number(invested_amount.text)['currency']
-
-            parsed_security = {
-                'isin': isin.text.strip(),
-                'type': loan_type.text.strip(),
-                'risk_score': int(risk_score.text.strip()),
-                'lending_company': lenders[0].text.strip(),
-                'legal_entity': lenders[1].text.strip(),
-                'country': Utils.get_svg_title(country),
-                'interest_rate': float(interest_rate.text.strip().replace('%', '')),
-                'purchase_date': Utils.str_to_date(purchase_date.text),
-                'invested_amount': Utils.parse_currency_number(invested_amount.text)['amount'],
-                'received_payments': Utils.parse_currency_number(received_payments.text)['amount'],
-                'pending_payments': Utils.parse_currency_number(pending_payments.text)['amount'],
-                'in_recovery': Utils.parse_currency_number(in_recovery.text)['amount'],
-                'currency': currency,
-            }
-
-            if current:
-                remaining_term = security.find_element(
-                    by='xpath',
-                    value='//span[normalize-space()="Remaining term"]/../span[2]',
-                )
-
-                outstanding_principal = security.find_element(
-                    by='xpath',
-                    value='//span[normalize-space()="Outstanding Principal"]/../span[2]/div/span',
-                )
-
-                try:
-                    next_payment_date, next_payment_amount = security.find_elements(
-                        by='class name',
-                        value='date-value',
-                    )
-
-                    current_fields = {
-                        'remaining_term': remaining_term,
-                        'outstanding_principal': Utils.parse_currency_number(outstanding_principal.text)['amount'],
-                        'next_payment_date': Utils.str_to_date(next_payment_date.text),
-                        'next_payment_amount': Utils.parse_currency_number(next_payment_amount.text)['amount'],
-                    }
-
-                except ValueError:
-                    next_payment_date, next_payment_amount = 'N/A', 'N/A'
-
-                    current_fields = {
-                        'remaining_term': remaining_term,
-                        'outstanding_principal': Utils.parse_currency_number(outstanding_principal.text)['amount'],
-                        'next_payment_date': next_payment_date,
-                        'next_payment_amount': next_payment_amount,
-                    }
-
-                parsed_security.update(current_fields)
-
-            else:
-                finished_date = security.find_element(
-                    by='xpath',
-                    value='//span[normalize-space()="Finished"]/../span[1]',
-                )
-
-                finished_fields = {
-                    'finished_date': datetime.strptime(finished_date.text.strip().replace('.', ''), '%d%m%Y').date(),
-                }
-
-                parsed_security.update(finished_fields)
-
-            securities_data.append(parsed_security)
+        securities_data = asyncio.run(Utils.parse_mintos_securities(securities, current))
 
         return securities_data if raw else pd.DataFrame(securities_data)
 
@@ -465,21 +339,14 @@ class API:
         Logs in to Mintos Marketplace via headless Chromium browser
         """
 
-        try:
-            cookies = pickle.load(open('cookies.pkl', 'rb'))
-
-            # Add all pickled cookies to selenium web driver
-            for cookie in cookies:
-                self.__driver.add_cookie(cookie)
-
-            print(self.__driver.get_cookies())
-
-            return
-
-        except EOFError:
-            pass
-
         self.__driver.get(ENDPOINTS.LOGIN_URI)
+
+        # Import cookies to web driver with the required validations and stop login process if they're valid
+        valid_import = Utils.import_cookies(driver=self.__driver, file_path='cookies.pkl')
+
+        # If cookies imported are valid, skip the rest of the authentication process
+        if valid_import:
+            return
 
         self._wait_for_element(
             tag='id',
@@ -555,7 +422,8 @@ class API:
         # Wait 2 seconds before any further action to avoid Access Denied by Cloudflare
         time.sleep(2)
 
-        pickle.dump(self.__driver.get_cookies(), open('cookies.pkl', 'wb'))
+        with open('cookies.pkl', 'wb') as f:
+            pickle.dump(self.__driver.get_cookies(), f)
 
     def logout(self) -> None:
         self._make_request(url=ENDPOINTS.API_LOGOUT_URI)
@@ -568,75 +436,6 @@ class API:
         """
 
         return pyotp.TOTP(self.__tfa_secret).now()
-
-    def _resolve_captcha(self, iframe: WebElement) -> None:
-        """
-        Resolve Captcha by trying to find iframe with challenge
-        :param iframe: Iframe of Captcha
-        """
-
-        self.__driver.switch_to.frame(iframe)
-
-        # Locate captcha audio button and click it via JavaScript
-        audio_button = self._wait_for_element(
-            tag='id',
-            locator='recaptcha-audio-button',
-            timeout=10,
-        )
-
-        self._js_click(audio_button)
-
-        # Locate audio challenge download link
-        download_link = self._wait_for_element(
-            tag='class name',
-            locator='rc-audiochallenge-tdownload-link',
-            timeout=10,
-        )
-
-        tmp_dir = tempfile.gettempdir()
-
-        mp3_file, wav_file = os.path.join(tmp_dir, 'tmp.mp3'), os.path.join(tmp_dir, 'tmp.wav')
-
-        tmp_files = {mp3_file, wav_file}
-
-        with open(mp3_file, 'wb') as f:
-            link = download_link.get_attribute('href')
-
-            audio_download = requests.get(url=link, allow_redirects=True)
-
-            f.write(audio_download.content)
-
-            f.close()
-
-        AudioSegment.from_mp3(mp3_file).export(wav_file, format='wav')
-
-        recognizer = sr.Recognizer()
-
-        # Disable dynamic energy thershold to avoid failed Captcha audio transcription
-        recognizer.dynamic_energy_threshold = False
-
-        with sr.AudioFile(wav_file) as source:
-            audio = recognizer.listen(source)
-
-            try:
-                recognized_text = recognizer.recognize_google(audio)
-
-            except sr.UnknownValueError:
-                raise RecaptchaException('Failed to automatically solve Captcha, try again.')
-
-        self._cleanup(tmp_files)
-
-        self.__driver.find_element(by='id', value='audio-response').send_keys(recognized_text)
-
-        verify_button = self._wait_for_element(
-            tag='id',
-            locator='recaptcha-verify-button',
-            timeout=5,
-        )
-
-        self._js_click(verify_button)
-
-        self.__driver.switch_to.default_content()
 
     def _make_request(
             self,
@@ -697,7 +496,7 @@ class API:
     def _create_driver() -> WebDriver:
         options, service = webdriver.ChromeOptions(), Service(ChromeDriverManager().install())
 
-        options.add_argument("--headless")
+        # options.add_argument("--headless")
         options.add_argument("--window-size=1920,1080")
 
         options.add_argument('--start-maximized')

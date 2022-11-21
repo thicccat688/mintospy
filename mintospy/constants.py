@@ -160,6 +160,11 @@ class CONSTANTS:
         'defaulted',
     ]
 
+    SESSION_COOKIES = {
+        'PHPSESSID',
+        'MW_SESSION_ID',
+    }
+
     @classmethod
     def get_currency_iso(cls, currency: str) -> int:
         """
