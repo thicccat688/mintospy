@@ -340,6 +340,8 @@ class API:
                 timeout=10,
             )
 
+            print('total text --->', total_investments.text)
+
         except TimeoutException:
             raise MintosException(f'No {"Notes" if notes else "Claims"} with your criteria available.')
 
@@ -588,18 +590,18 @@ if __name__ == '__main__':
 
     print(time.time() - t1)
 
-    # print(mintos_api.get_portfolio_data(currency='EUR'))
+    print(mintos_api.get_portfolio_data(currency='EUR'))
 
-    # print(mintos_api.get_net_annual_return(currency='EUR'))
+    print(mintos_api.get_net_annual_return(currency='EUR'))
 
-    # print(mintos_api.get_lending_companies())
+    print(mintos_api.get_lending_companies())
 
-    # print(mintos_api.get_currencies())
+    print(mintos_api.get_currencies())
 
     t1 = time.time()
 
-    print(mintos_api.get_investments(currency='EUR', quantity=200, notes=False, current=False))
+    print(mintos_api.get_investments(currency='EUR', quantity=200, notes=True, current=True))
 
     print(time.time() - t1)
 
-    # mintos_api.logout()
+    mintos_api.logout()

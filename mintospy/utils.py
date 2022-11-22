@@ -22,7 +22,7 @@ class Utils:
         isins = cls.async_find_elements(
             driver=driver,
             by='xpath',
-            value='//a[@data-testid="note-isin"]',
+            value='//div[@data-testid="note-series-item"]//a[@data-testid="note-isin"]',
         )
 
         if notes:
