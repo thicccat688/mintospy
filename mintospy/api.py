@@ -409,6 +409,8 @@ class API:
 
         # If cookies imported are valid, skip the rest of the authentication process
         if valid_import:
+            time.sleep(1)
+
             return
 
         self._wait_for_element(
@@ -602,6 +604,6 @@ if __name__ == '__main__':
 
     print(mintos_api.get_investments(currency='EUR', quantity=200, notes=True, current=True))
 
-    print(time.time() - t1)
+    print('investments fetching --->', time.time() - t1)
 
     mintos_api.logout()

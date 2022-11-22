@@ -1,3 +1,4 @@
+from mintospy.exceptions import MintosException
 from mintospy.constants import CONSTANTS
 from typing import Generator, Union
 from bs4 import BeautifulSoup
@@ -362,6 +363,11 @@ class Utils:
         response_text = parsed_html.find('pre').text
 
         response_text = cls._safe_parse_json(response_text)
+
+        error_message = response_text.get('message')
+
+        if error_message:
+            raise MintosException(error_message)
 
         return response_text
 
