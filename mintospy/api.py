@@ -124,6 +124,7 @@ class API:
             self,
             currency: str,
             quantity: int = 30,
+            page: int = 1,
             sort: str = 'interestRate',
             countries: List[str] = None,
             pending_payments: bool = None,
@@ -150,7 +151,8 @@ class API:
         """
         :param currency: Currency that notes are denominated in
         :param quantity: Quantity of notes to get
-        :param sort: What to sort notes by
+        :param page: Page to get Notes from (Gets from first page by default)
+        :param sort: What to sort Notes by
         :param countries: What countries notes should be issued in
         :param pending_payments: If payments for notes should be pending or not
         :param amortization_methods: Amortization type of notes (Full, partial, interest-only, or bullet)
@@ -182,8 +184,11 @@ class API:
             ('currencies[]', currency_iso_code),
             ('sort_order', 'ASC' if ascending_sort else 'DESC'),
             ('max_results', 300),
-            ('page', 1),
+            ('page', page),
         ]
+
+        if page < 1:
+            raise ValueError('Page must be superior or equal to 1.')
 
         if isinstance(countries, list):
             for country in countries:
@@ -320,147 +325,11 @@ class API:
             ).text.split(' Sets')[0]
         )
 
-        isins = self.__driver.find_elements(
-            by='xpath',
-            value='//div[@data-testid="note-series-item"]//a[@data-testid="note-isin"]',
-        )
+        t3 = time.time()
 
-        loan_types = self.__driver.find_elements(
-            by='xpath',
-            value='//div[@data-testid="note-series-item"]//a[@data-testid="note-isin"]/following-sibling::div[1]',
-        )
+        parsed_securities = Utils.parse_securities(driver=self.__driver, current=current)
 
-        risk_scores = self.__driver.find_elements(
-            by='xpath',
-            value='//div[@data-testid="note-series-item"]//div[contains(@class, "mw-u-width-40 mintos-score-color")]',
-        )
-
-        countries = self.__driver.find_elements(
-            by='xpath',
-            value='(//*[name()="svg"]/*[name()="title"])',
-        )
-
-        parsed_countries = [
-            f'{Utils.get_svg_title(countries[i])} ({Utils.get_svg_title(countries[i+1])})'
-            for i in range(0, len(countries), 2)
-        ]
-
-        lenders = self.__driver.find_elements(
-            by='xpath',
-            value='//span[@class="mw-u-o-hidden m-u-to-ellipsis mw-u-width-full"]',
-        )
-
-        interest_rates = self.__driver.find_elements(
-            by='xpath',
-            value='//span[normalize-space()="Interest rate"]/../span[2]',
-        )
-
-        purchase_dates = self.__driver.find_elements(
-            by='xpath',
-            value='//span[normalize-space()="Purchase date"]/../span[2]/div/span',
-        )
-
-        invested_amounts = self.__driver.find_elements(
-            by='xpath',
-            value='//span[normalize-space()="Invested amount"]/../span[2]/div/span',
-        )
-
-        received_payments = self.__driver.find_elements(
-            by='xpath',
-            value='//span[normalize-space()="Received payments"]/../span[2]/div/span',
-        )
-
-        pending_data = self.__driver.find_elements(
-            by='xpath',
-            value='//span[normalize-space()="Pending Payments / In recovery"]/../div/span',
-        )
-
-        pending_payments, in_recovery = [
-            [pending_data[i] for i in range(0, len(pending_data), 1) if i % 2 == 1],
-            [pending_data[i] for i in range(0, len(pending_data), 2)],
-        ]
-
-        currency = [Utils.parse_currency_number(amount.text)['currency'] for amount in invested_amounts]
-
-        parsed_securities = {
-            'isin': [isin.text.strip() for isin in isins],
-            'type': [type_.text.strip() for type_ in loan_types],
-            'risk_score': [int(score.text.strip()) for score in risk_scores],
-            'lending_company': [lenders[i].text.strip() for i in range(0, len(lenders), 1) if i % 2 == 1],
-            'legal_entity': [lenders[i].text.strip() for i in range(0, len(lenders), 2)],
-            'country': parsed_countries,
-            'interest_rate': [float(interest_rate.text.strip().replace('%', '')) for interest_rate in interest_rates],
-            'purchase_date': [Utils.str_to_date(purchase_date.text) for purchase_date in purchase_dates],
-            'invested_amount': [Utils.parse_currency_number(amount.text)['amount'] for amount in invested_amounts],
-            'received_payments': [Utils.parse_currency_number(payment.text)['amount'] for payment in received_payments],
-            'pending_payments': [Utils.parse_currency_number(payment.text)['amount'] for payment in pending_payments],
-            'in_recovery': [Utils.parse_currency_number(recovery.text)['amount'] for recovery in in_recovery],
-            'currency': currency,
-        }
-
-        if current:
-            remaining_terms = self.__driver.find_elements(
-                by='xpath',
-                value='//div[@data-testid="note-series-item"]//span[normalize-space()="Remaining term"]/../span[2]',
-            )
-
-            outstanding_principals = self.__driver.find_elements(
-                by='xpath',
-                value='//span[normalize-space()="Outstanding Principal"]/../span[2]/div/span',
-            )
-
-            payments = self.__driver.find_elements(
-                by='xpath',
-                value='//span[normalize-space()="Next payment date / Next payment"]//..//div//span',
-            )
-
-            parsed_payments = []
-
-            for val in payments:
-                if val == '-':
-                    parsed_payments.append('Late')
-                    parsed_payments.append('N/A')
-
-                parsed_payments.append(val)
-
-            next_payment_dates, next_payment_amounts = [
-                [payments[i] for i in range(0, len(payments), 1) if i % 2 == 1],
-                [payments[i] for i in range(0, len(payments), 2)],
-            ]
-
-            current_fields = {
-                'remaining_term': [term.text.strip() for term in remaining_terms],
-                'outstanding_principal': [
-                    Utils.parse_currency_number(principal.text)['amount'] for principal in outstanding_principals
-                ],
-                'next_payment_date': [Utils.str_to_date(pdate.text) for pdate in next_payment_dates],
-                'next_payment_amount': [
-                    Utils.parse_currency_number(amount.text)['amount'] or 'N/A' for amount in next_payment_amounts
-                ],
-            }
-
-            parsed_securities.update(current_fields)
-
-        else:
-            finished_dates = self.__driver.find_elements(
-                by='xpath',
-                value='//span[normalize-space()="Finished"]/../span[1]',
-            )
-
-            finished_fields = {
-                'finished_date': [
-                    datetime.strptime(date_.text.strip().replace('.', ''), '%d%m%Y').date() for date_ in finished_dates
-                ],
-            }
-
-            parsed_securities.update(finished_fields)
-
-        print(parsed_securities)
-
-        for p in parsed_securities:
-            print(f'Length of {p} --->', len(parsed_securities[p]))
-
-        return parsed_securities if raw else pd.DataFrame(parsed_securities)
+        return pd.DataFrame(parsed_securities)
 
     def get_loans(self, raw: bool = False) -> List[dict]:
         pass
@@ -494,7 +363,7 @@ class API:
             self._wait_for_element(
                 tag='id',
                 locator='header-wrapper',
-                timeout=15,
+                timeout=20,
             )
 
             # Wait 1 second before any further action to avoid Access Denied by Cloudflare
@@ -513,13 +382,13 @@ class API:
             self._wait_for_element(
                 tag='xpath',
                 locator='//label[text()=" 6-digit code "]',
-                timeout=15,
+                timeout=20,
             )
 
         self._wait_for_element(
             tag='xpath',
             locator='//label[normalize-space()="6-digit code"]',
-            timeout=15,
+            timeout=20,
         )
 
         self._wait_for_element(
