@@ -1,3 +1,4 @@
+from mintospy.exceptions import MintosException
 from mintospy.constants import CONSTANTS
 from mintospy.endpoints import ENDPOINTS
 from mintospy.utils import Utils
@@ -15,9 +16,9 @@ from datetime import datetime
 from bs4 import BeautifulSoup
 import pandas as pd
 import warnings
-import asyncio
 import pickle
 import pyotp
+import math
 import time
 import os
 
@@ -125,10 +126,12 @@ class API:
             currency: str,
             quantity: int = 30,
             page: int = 1,
+            notes: bool = True,
             sort: str = 'interestRate',
             countries: List[str] = None,
             pending_payments: bool = None,
             amortization_methods: List[str] = None,
+            claim_id: str = None,
             isin: str = None,
             late_loan_exposure: List[str] = None,
             lending_companies: List[str] = None,
@@ -152,11 +155,13 @@ class API:
         :param currency: Currency that notes are denominated in
         :param quantity: Quantity of notes to get
         :param page: Page to get Notes from (Gets from first page by default)
+        :param notes: Specify whether to get Notes or Claims (True -> Gets notes; False -> Gets claims)
         :param sort: What to sort Notes by
         :param countries: What countries notes should be issued in
         :param pending_payments: If payments for notes should be pending or not
         :param amortization_methods: Amortization type of notes (Full, partial, interest-only, or bullet)
-        :param isin: ISIN of security
+        :param claim_id: ID of claim to filter by
+        :param isin: ISIN of security to filter by
         :param late_loan_exposure: Late loan exposure of notes (0_20 for 0-20%, 20_40 for 20-40%, and so on)
         :param lending_companies: Only return notes issued by specified lending companies
         :param lender_statuses: Only return notes from lenders in a certain state (Active, suspended, or in default)
@@ -187,8 +192,17 @@ class API:
             ('page', page),
         ]
 
+        if notes:
+            url = f'{ENDPOINTS.INVESTMENTS_URI}/{"current" if current else "finished"}'
+
+        else:
+            url = f'{ENDPOINTS.CLAIMS_URI}/{"current-investments" if current else "finished-investments"}'
+
         if page < 1:
             raise ValueError('Page must be superior or equal to 1.')
+
+        if isin and claim_id:
+            raise ValueError('You can only filter by ISIN or a Claim ID.')
 
         if isinstance(countries, list):
             for country in countries:
@@ -313,23 +327,70 @@ class API:
             investment_params.append(new_min_purchased_date)
 
         self._make_request(
-            url=f'{ENDPOINTS.INVESTMENTS_URI}/{"current" if current else "finished"}',
+            url=url,
             params=investment_params,
         )
 
-        total_notes = int(
-            self._wait_for_element(
+        ixpath = '//h4[contains(text(), "Sets of Notes")]' if notes else '//span[contains(text(), "selected entries")]'
+
+        try:
+            total_investments = self._wait_for_element(
                 tag='xpath',
-                locator='//h4[contains(text(), "Sets of Notes")]',
-                timeout=5,
-            ).text.split(' Sets')[0]
-        )
+                locator=ixpath,
+                timeout=10,
+            )
 
-        t3 = time.time()
+        except TimeoutException:
+            raise MintosException(f'No {"Notes" if notes else "Claims"} with your criteria available.')
 
-        parsed_securities = Utils.parse_securities(driver=self.__driver, current=current)
+        if notes:
+            total_investments = int(total_investments.text.split(' Sets')[0].strip())
 
-        return pd.DataFrame(parsed_securities)
+        else:
+            total_investments = int(total_investments.text.split('of ')[1].split(' selected')[0].strip())
+
+        if quantity > total_investments:
+            warnings.warn(
+                f'Getting you available investments (Only {total_investments} available).'
+            )
+
+        total_pages = math.ceil(total_investments / 300)
+        recalls = math.ceil(quantity / 300)
+
+        parsed_list = []
+
+        for i in range(recalls):
+            if i > total_pages:
+                break
+
+            self._make_request(
+                url=url,
+                params=investment_params,
+            )
+
+            parsed_securities = Utils.parse_securities(driver=self.__driver, notes=notes, current=current)
+
+            parsed_list.append(parsed_securities)
+
+        merged_data = {}
+
+        for o in parsed_list:
+            for k in o:
+                v = merged_data.get(k)
+
+                if v:
+                    merged_data[k] += o[k]
+
+                else:
+                    merged_data[k] = o[k]
+
+        print(merged_data)
+
+        securities_df = pd.DataFrame(merged_data)
+
+        securities_df.set_index(keys=['isin'])
+
+        return securities_df
 
     def get_loans(self, raw: bool = False) -> List[dict]:
         pass
@@ -537,7 +598,7 @@ if __name__ == '__main__':
 
     t1 = time.time()
 
-    print(mintos_api.get_investments(currency='EUR'))
+    print(mintos_api.get_investments(currency='EUR', quantity=200, notes=False, current=False))
 
     print(time.time() - t1)
 

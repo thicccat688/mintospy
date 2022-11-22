@@ -22,3 +22,5 @@ class ENDPOINTS:
     OVERVIEW_URI = f'{WEB_APP_URI}/overview'
 
     INVESTMENTS_URI = f'{WEB_APP_URI}/set-of-notes/investments'
+
+    CLAIMS_URI = f'{WEB_APP_URI}/my-investments'

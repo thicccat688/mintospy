@@ -5,7 +5,7 @@ from bs4.element import ResultSet
 from selenium.webdriver.chrome.webdriver import WebDriver
 from selenium.webdriver.remote.webelement import WebElement
 from datetime import datetime, date
-from typing import List
+from typing import Dict, List
 import asyncio
 import pickle
 import time
@@ -14,66 +14,78 @@ import json
 
 class Utils:
     @classmethod
-    def parse_securities(cls, driver: WebDriver, current: bool) -> List[dict]:
-        return asyncio.run(cls.async_parse_securities(driver=driver, current=current))
+    def parse_securities(cls, driver: WebDriver, notes: bool, current: bool) -> Dict[str, list]:
+        return asyncio.run(cls.async_parse_securities(driver=driver, notes=notes, current=current))
 
     @classmethod
-    async def async_parse_securities(cls, driver: WebDriver, current: bool) -> List[dict]:
-        isins = cls.async_find_element(
+    async def async_parse_securities(cls, driver: WebDriver, notes: bool, current: bool) -> Dict[str, list]:
+        isins = cls.async_find_elements(
             driver=driver,
             by='xpath',
-            value='//div[@data-testid="note-series-item"]//a[@data-testid="note-isin"]',
+            value='//a[@data-testid="note-isin"]',
         )
 
-        loan_types = cls.async_find_element(
+        if notes:
+            lxpath = '//a[@data-testid="note-isin"]/following-sibling::div'
+
+        else:
+            lxpath = '//a[@data-testid="note-isin"]/following-sibling::div//span'
+
+        loan_types = cls.async_find_elements(
             driver=driver,
             by='xpath',
-            value='//div[@data-testid="note-series-item"]//a[@data-testid="note-isin"]/following-sibling::div[1]',
+            value=lxpath,
         )
 
-        risk_scores = cls.async_find_element(
+        risk_scores = cls.async_find_elements(
             driver=driver,
             by='xpath',
             value='//div[contains(@class, "mw-u-width-40 mintos-score-color")]',
         )
 
-        countries = cls.async_find_element(
+        countries = cls.async_find_elements(
             driver=driver,
             by='xpath',
             value='(//*[name()="svg"]/*[name()="title"])',
         )
 
-        lenders = cls.async_find_element(
+        if notes:
+            lxpath = '//span[@class="mw-u-o-hidden m-u-to-ellipsis mw-u-width-full"]'
+
+        else:
+            lxpath = '//span[normalize-space()="Lending company"]//..//div//span//div//span'
+
+        lenders = cls.async_find_elements(
             driver=driver,
             by='xpath',
-            value='//span[@class="mw-u-o-hidden m-u-to-ellipsis mw-u-width-full"]',
+            value=lxpath,
         )
 
-        interest_rates = cls.async_find_element(
+        interest_rates = cls.async_find_elements(
             driver=driver,
             by='xpath',
             value='//span[normalize-space()="Interest rate"]/../span[2]',
         )
 
-        purchase_dates = cls.async_find_element(
+        purchase_dates = cls.async_find_elements(
             driver=driver,
             by='xpath',
             value='//span[normalize-space()="Purchase date"]/../span[2]/div/span',
         )
 
-        invested_amounts = cls.async_find_element(
+        invested_amounts = cls.async_find_elements(
             driver=driver,
             by='xpath',
             value='//span[normalize-space()="Invested amount"]/../span[2]/div/span',
         )
 
-        received_payments = cls.async_find_element(
+        received_payments = cls.async_find_elements(
             driver=driver,
             by='xpath',
             value='//span[normalize-space()="Received payments"]/../span[2]/div/span',
         )
 
-        pending_data = cls.async_find_element(
+        pending_data = cls.async_find_elements(
             driver=driver,
             by='xpath',
             value='//span[normalize-space()="Pending Payments / In recovery"]/../div/span',
@@ -122,24 +134,30 @@ class Utils:
         currency = [cls.parse_currency_number(amount.text)['currency'] for amount in invested_amounts]
 
         parsed_securities = {
-            'isin': map(lambda isin: isin.text.strip(), isins),
-            'type': map(lambda type_: type_.text.strip(), loan_types),
-            'risk_score': map(lambda score: int(score.text.strip()), risk_scores),
+            'isin': list(map(lambda isin: isin.text.strip(), isins)),
+            'type': list(map(lambda type_: type_.text.strip(), loan_types)),
+            'risk_score': list(map(lambda score: 'SW' if score.text == 'SW' else int(score.text.strip()), risk_scores)),
             'lending_company': [lenders[i].text.strip() for i in range(0, len(lenders), 2)],
             'legal_entity': [lenders[i].text.strip() for i in range(1, len(lenders), 2)],
             'country': parsed_countries,
-            'interest_rate': map(lambda rate: float(rate.text.strip().replace('%', '')), interest_rates),
-            'purchase_date': map(lambda date_: cls.str_to_date(date_.text), purchase_dates),
-            'invested_amount': map(lambda amount: cls.parse_currency_number(amount.text)['amount'], invested_amounts),
-            'received_payments': map(lambda recv: cls.parse_currency_number(recv.text)['amount'], received_payments),
-            'pending_payments': map(lambda pend: cls.parse_currency_number(pend.text)['amount'], pending_payments),
-            'in_recovery': map(lambda recovery: cls.parse_currency_number(recovery.text)['amount'], in_recovery),
+            'interest_rate': list(map(lambda rate: float(rate.text.strip().replace('%', '')), interest_rates)),
+            'purchase_date': list(map(lambda date_: cls.str_to_date(date_.text), purchase_dates)),
+            'invested_amount': list(
+                map(lambda amount: cls.parse_currency_number(amount.text)['amount'], invested_amounts)
+            ),
+            'received_payments': list(
+                map(lambda recv: cls.parse_currency_number(recv.text)['amount'], received_payments)
+            ),
+            'pending_payments': list(
+                map(lambda pend: cls.parse_currency_number(pend.text)['amount'], pending_payments)
+            ),
+            'in_recovery': list(map(lambda recovery: cls.parse_currency_number(recovery.text)['amount'], in_recovery)),
             'currency': currency,
         }
 
         if current:
             remaining_terms = asyncio.create_task(
-                cls.async_find_element(
+                cls.async_find_elements(
                     driver=driver,
                     by='xpath',
                     value='//span[normalize-space()="Remaining term"]/../span[2]',
@@ -147,7 +165,7 @@ class Utils:
             )
 
             outstanding_principals = asyncio.create_task(
-                cls.async_find_element(
+                cls.async_find_elements(
                     driver=driver,
                     by='xpath',
                     value='//span[normalize-space()="Outstanding Principal"]/../span[2]/div/span',
@@ -155,7 +173,7 @@ class Utils:
             )
 
             payments = asyncio.create_task(
-                cls.async_find_element(
+                cls.async_find_elements(
                     driver=driver,
                     by='xpath',
                     value='//span[normalize-space()="Next payment date / Next payment"]//..//div//span',
@@ -187,14 +205,23 @@ class Utils:
 
             current_fields = {
                 'remaining_term': [term.text.strip() for term in remaining_terms],
-                'outstanding_principal': map(
-                    lambda principal: cls.parse_currency_number(principal.text)['amount'],
-                    outstanding_principals,
+                'outstanding_principal': list(
+                    map(
+                        lambda principal: cls.parse_currency_number(principal.text)['amount'],
+                        outstanding_principals,
+                    )
                 ),
-                'next_payment_date': map(lambda pdate: cls.str_to_date(getattr(pdate, 'text', 0)), next_payment_dates),
-                'next_payment_amount': map(
-                    lambda amount: cls.parse_currency_number(getattr(amount, 'text', 0))['amount'] or 'N/A',
-                    next_payment_amounts,
+                'next_payment_date': list(
+                    map(
+                        lambda pdate: cls.str_to_date(getattr(pdate, 'text', 0)),
+                        next_payment_dates
+                    ),
+                ),
+                'next_payment_amount': list(
+                    map(
+                        lambda amount: cls.parse_currency_number(getattr(amount, 'text', 0))['amount'] or 'N/A',
+                        next_payment_amounts,
+                    ),
                 ),
             }
 
@@ -203,14 +230,11 @@ class Utils:
         else:
             finished_dates = driver.find_elements(
                 by='xpath',
-                value='//span[normalize-space()="Finished"]/../span[1]',
+                value='//span[normalize-space()="Finished"]/../span[2]',
             )
 
             finished_fields = {
-                'finished_date': map(
-                    lambda date_: datetime.strptime(date_.text.strip().replace('.', ''), '%d%m%Y').date(),
-                    finished_dates,
-                ),
+                'finished_date': list(map(lambda date_: cls.str_to_date(date_.text), finished_dates)),
             }
 
             parsed_securities.update(finished_fields)
@@ -218,7 +242,7 @@ class Utils:
         return parsed_securities
 
     @staticmethod
-    async def async_find_element(driver: WebDriver, by: str, value: str) -> List[WebElement]:
+    async def async_find_elements(driver: WebDriver, by: str, value: str) -> List[WebElement]:
         return driver.find_elements(
             by=by,
             value=value,
