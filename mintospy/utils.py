@@ -85,8 +85,8 @@ class Utils:
         parsed_securities = {
             'ISIN': cls.extract_text(isins),
             'Country': parsed_countries,
-            'Lending company': [lenders[i] for i in range(0, len(lenders), 2)],
-            'Legal entity': [lenders[i] for i in range(1, len(lenders), 2)],
+            'Lending company': [lenders[i].get_text(strip=True) for i in range(0, len(lenders), 2)],
+            'Legal entity': [lenders[i].get_text(strip=True) for i in range(1, len(lenders), 2)],
             'Mintos Risk Score': cls.extract_text(rs),
             'Loan portfolio performance': cls.extract_text(lpp),
             'Loan servicer efficiency': cls.extract_text(lse),
@@ -171,7 +171,7 @@ class Utils:
 
     @staticmethod
     def extract_text(elements: Union[ResultSet[Tag], List[any]]) -> List[str]:
-        return [element.get_text() for element in elements]
+        return [element.get_text(strip=True) for element in elements]
 
     @classmethod
     def parse_currency_number(cls, __str: str) -> dict:
