@@ -331,16 +331,18 @@ class API:
             params=investment_params,
         )
 
-        ixpath = '//h4[contains(text(), "Sets of Notes")]' if notes else '//span[contains(text(), "selected entries")]'
+        if notes:
+            ixpath = '//h4[contains(text(), "Sets of Notes") and string-length(normalize-space())>14]'
+
+        else:
+            ixpath = '//span[contains(text(), "selected entries") and string-length(normalize-space())]'
 
         try:
             total_investments = self._wait_for_element(
                 tag='xpath',
                 locator=ixpath,
-                timeout=10,
+                timeout=15,
             )
-
-            print('total text --->', total_investments.text)
 
         except TimeoutException:
             raise MintosException(f'No {"Notes" if notes else "Claims"} with your criteria available.')
@@ -365,10 +367,11 @@ class API:
             if i > total_pages:
                 break
 
-            self._make_request(
-                url=url,
-                params=investment_params,
-            )
+            if i > 0:
+                self._make_request(
+                    url=url,
+                    params=investment_params,
+                )
 
             parsed_securities = Utils.parse_securities(driver=self.__driver, notes=notes, current=current)
 
@@ -409,7 +412,7 @@ class API:
 
         # If cookies imported are valid, skip the rest of the authentication process
         if valid_import:
-            time.sleep(1)
+            time.sleep(2)
 
             return
 
@@ -604,6 +607,6 @@ if __name__ == '__main__':
 
     print(mintos_api.get_investments(currency='EUR', quantity=200, notes=True, current=True))
 
-    print('investments fetching --->', time.time() - t1)
+    print('investments fetching duration --->', time.time() - t1)
 
     mintos_api.logout()

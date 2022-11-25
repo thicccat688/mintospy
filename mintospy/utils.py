@@ -2,12 +2,13 @@ from mintospy.exceptions import MintosException
 from mintospy.constants import CONSTANTS
 from typing import Generator, Union
 from bs4 import BeautifulSoup
-from bs4.element import ResultSet
-from selenium.webdriver.chrome.webdriver import WebDriver
+from bs4.element import ResultSet, Tag
+from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.remote.webelement import WebElement
+from selenium.webdriver.chrome.webdriver import WebDriver
+from selenium.webdriver.support.ui import WebDriverWait
 from datetime import datetime, date
 from typing import Dict, List
-import asyncio
 import pickle
 import time
 import json
@@ -16,181 +17,97 @@ import json
 class Utils:
     @classmethod
     def parse_securities(cls, driver: WebDriver, notes: bool, current: bool) -> Dict[str, list]:
-        return asyncio.run(cls.async_parse_securities(driver=driver, notes=notes, current=current))
-
-    @classmethod
-    async def async_parse_securities(cls, driver: WebDriver, notes: bool, current: bool) -> Dict[str, list]:
-        isins = cls.async_find_elements(
+        cls._wait_for_element(
             driver=driver,
             by='xpath',
-            value='//div[@data-testid="note-series-item"]//a[@data-testid="note-isin"]',
+            value='//a[@data-testid="note-isin"]',
+            timeout=15,
         )
+
+        investments = BeautifulSoup(driver.page_source, 'html.parser')
+
+        isins = investments.select('a[data-testid=note-isin]')
+
+        loan_types = investments.select('a[data-testid=note-isin] + div')
+
+        risk_scores = investments.select('div[class*="mintos-score-color"]')
+
+        # Risk score, loan portfolio performance, loan servicer efficiency, buyback strength, and cooperation structure
+        rs, lpp, lse, bs, cs = [], [], [], [], []
+
+        # Sort all values in to their respective arrays
+        for i in range(0, len(risk_scores), 5):
+            rs.append(risk_scores[i])
+            lpp.append(risk_scores[i+1])
+            lse.append(risk_scores[i+2])
+            bs.append(risk_scores[i+3])
+            cs.append(risk_scores[i+4])
 
         if notes:
-            lxpath = '//a[@data-testid="note-isin"]/following-sibling::div'
+            countries = investments.select('svg title')[:-4]
+
+            parsed_countries = [
+                f'{countries[i].get_text()} ({countries[i + 1].get_text()})'
+                for i in range(0, len(countries), 2)
+            ]
 
         else:
-            lxpath = '//a[@data-testid="note-isin"]/following-sibling::div//span'
+            countries = investments.select('span:-soup-contains("Lending company") > div > img')
 
-        loan_types = cls.async_find_elements(
-            driver=driver,
-            by='xpath',
-            value=lxpath,
-        )
-
-        risk_scores = cls.async_find_elements(
-            driver=driver,
-            by='xpath',
-            value='//div[contains(@class, "mw-u-width-40 mintos-score-color")]',
-        )
-
-        countries = cls.async_find_elements(
-            driver=driver,
-            by='xpath',
-            value='(//*[name()="svg"]/*[name()="title"])',
-        )
+            parsed_countries = [
+                f'{countries[i].get("title") or "N/A"} ({countries[i + 1].get("title") or "N/A"})'
+                for i in range(0, len(countries), 2)
+            ]
 
         if notes:
-            lxpath = '//span[@class="mw-u-o-hidden m-u-to-ellipsis mw-u-width-full"]'
+            lenders_selector = 'span[class="mw-u-o-hidden m-u-to-ellipsis mw-u-width-full"]'
 
         else:
-            lxpath = '//span[normalize-space()="Lending company"]//..//div//span//div//span'
+            lenders_selector = 'div > img + span > div > span'
 
-        lenders = cls.async_find_elements(
-            driver=driver,
-            by='xpath',
-            value=lxpath,
-        )
+        lenders = investments.select(lenders_selector)
 
-        interest_rates = cls.async_find_elements(
-            driver=driver,
-            by='xpath',
-            value='//span[normalize-space()="Interest rate"]/../span[2]',
-        )
+        interest_rates = investments.select('span:-soup-contains("Interest rate") + span')
 
-        purchase_dates = cls.async_find_elements(
-            driver=driver,
-            by='xpath',
-            value='//span[normalize-space()="Purchase date"]/../span[2]/div/span',
-        )
+        purchase_dates = investments.select('span:-soup-contains("Purchase date") + span > div > span')
 
-        invested_amounts = cls.async_find_elements(
-            driver=driver,
-            by='xpath',
-            value='//span[normalize-space()="Invested amount"]/../span[2]/div/span',
-        )
+        invested_amounts = investments.select('span:-soup-contains("Invested amount") + span > div > span')
 
-        received_payments = cls.async_find_elements(
-            driver=driver,
-            by='xpath',
-            value='//span[normalize-space()="Received payments"]/../span[2]/div/span',
-        )
+        received_payments = investments.select('span:-soup-contains("Received payments") + span > div > span')
 
-        pending_data = cls.async_find_elements(
-            driver=driver,
-            by='xpath',
-            value='//span[normalize-space()="Pending Payments / In recovery"]/../div/span',
-        )
-
-        coroutines = [
-            isins,
-            loan_types,
-            risk_scores,
-            countries,
-            lenders,
-            interest_rates,
-            purchase_dates,
-            invested_amounts,
-            received_payments,
-            pending_data,
-        ]
-
-        results = await asyncio.gather(*coroutines)
-
-        [
-            isins,
-            loan_types,
-            risk_scores,
-            countries,
-            lenders,
-            interest_rates,
-            purchase_dates,
-            invested_amounts,
-            received_payments,
-            pending_data,
-        ] = results
-
-        countries = countries[:-4]
-
-        parsed_countries = [
-            f'{cls.get_svg_title(countries[i])} ({cls.get_svg_title(countries[i + 1])})'
-            for i in range(0, len(countries), 2)
-        ]
+        pending_data = investments.select('span:-soup-contains("Pending Payments / In recovery") + div > span')
 
         pending_payments, in_recovery = [
             [pending_data[i] for i in range(0, len(pending_data), 2)],
             [pending_data[i] for i in range(1, len(pending_data), 2)],
         ]
 
-        currency = [cls.parse_currency_number(amount.text)['currency'] for amount in invested_amounts]
-
         parsed_securities = {
-            'isin': list(map(lambda isin: isin.text.strip(), isins)),
-            'type': list(map(lambda type_: type_.text.strip(), loan_types)),
-            'risk_score': list(map(lambda score: 'SW' if score.text == 'SW' else int(score.text.strip()), risk_scores)),
-            'lending_company': [lenders[i].text.strip() for i in range(0, len(lenders), 2)],
-            'legal_entity': [lenders[i].text.strip() for i in range(1, len(lenders), 2)],
-            'country': parsed_countries,
-            'interest_rate': list(map(lambda rate: float(rate.text.strip().replace('%', '')), interest_rates)),
-            'purchase_date': list(map(lambda date_: cls.str_to_date(date_.text), purchase_dates)),
-            'invested_amount': list(
-                map(lambda amount: cls.parse_currency_number(amount.text)['amount'], invested_amounts)
-            ),
-            'received_payments': list(
-                map(lambda recv: cls.parse_currency_number(recv.text)['amount'], received_payments)
-            ),
-            'pending_payments': list(
-                map(lambda pend: cls.parse_currency_number(pend.text)['amount'], pending_payments)
-            ),
-            'in_recovery': list(map(lambda recovery: cls.parse_currency_number(recovery.text)['amount'], in_recovery)),
-            'currency': currency,
+            'ISIN': cls.extract_text(isins),
+            'Country': parsed_countries,
+            'Lending company': [lenders[i] for i in range(0, len(lenders), 2)],
+            'Legal entity': [lenders[i] for i in range(1, len(lenders), 2)],
+            'Mintos Risk Score': cls.extract_text(rs),
+            'Loan portfolio performance': cls.extract_text(lpp),
+            'Loan servicer efficiency': cls.extract_text(lse),
+            'Buyback strength': cls.extract_text(bs),
+            'Cooperation structure': cls.extract_text(cs),
+            'Interest rate': cls.extract_text(interest_rates),
+            'Invested amount': cls.extract_text(invested_amounts),
+            'Received payments': cls.extract_text(received_payments),
         }
 
         if current:
-            remaining_terms = asyncio.create_task(
-                cls.async_find_elements(
-                    driver=driver,
-                    by='xpath',
-                    value='//span[normalize-space()="Remaining term"]/../span[2]',
-                )
-            )
+            remaining_terms = investments.select('span:-soup-contains("Remaining term") + span')
 
-            outstanding_principals = asyncio.create_task(
-                cls.async_find_elements(
-                    driver=driver,
-                    by='xpath',
-                    value='//span[normalize-space()="Outstanding Principal"]/../span[2]/div/span',
-                )
-            )
+            principals = investments.select('span:-soup-contains("Outstanding Principal") + span > div > span')
 
-            payments = asyncio.create_task(
-                cls.async_find_elements(
-                    driver=driver,
-                    by='xpath',
-                    value='//span[normalize-space()="Next payment date / Next payment"]//..//div//span',
-                )
-            )
-
-            coroutines = [remaining_terms, outstanding_principals, payments]
-
-            results = await asyncio.gather(*coroutines)
-
-            [remaining_terms, outstanding_principals, payments] = results
+            payments = investments.select('span:-soup-contains("Next payment date / Next payment") + span > div > span')
 
             parsed_payments = []
 
             for val in payments:
-                if val.text == '—':
+                if val.get_text(strip=True) == '—':
                     parsed_payments.append('Late')
 
                     parsed_payments.append('N/A')
@@ -199,55 +116,10 @@ class Utils:
 
                 parsed_payments.append(val)
 
-            next_payment_dates, next_payment_amounts = [
-                [parsed_payments[i] for i in range(0, len(parsed_payments), 2)],
-                [parsed_payments[i] for i in range(1, len(parsed_payments), 2)],
-            ]
-
-            current_fields = {
-                'remaining_term': [term.text.strip() for term in remaining_terms],
-                'outstanding_principal': list(
-                    map(
-                        lambda principal: cls.parse_currency_number(principal.text)['amount'],
-                        outstanding_principals,
-                    )
-                ),
-                'next_payment_date': list(
-                    map(
-                        lambda pdate: cls.str_to_date(getattr(pdate, 'text', 0)),
-                        next_payment_dates
-                    ),
-                ),
-                'next_payment_amount': list(
-                    map(
-                        lambda amount: cls.parse_currency_number(getattr(amount, 'text', 0))['amount'] or 'N/A',
-                        next_payment_amounts,
-                    ),
-                ),
-            }
-
-            parsed_securities.update(current_fields)
-
         else:
-            finished_dates = driver.find_elements(
-                by='xpath',
-                value='//span[normalize-space()="Finished"]/../span[2]',
-            )
-
-            finished_fields = {
-                'finished_date': list(map(lambda date_: cls.str_to_date(date_.text), finished_dates)),
-            }
-
-            parsed_securities.update(finished_fields)
+            finished_dates = investments.select('span:-soup-contains("Finished") + span')
 
         return parsed_securities
-
-    @staticmethod
-    async def async_find_elements(driver: WebDriver, by: str, value: str) -> List[WebElement]:
-        return driver.find_elements(
-            by=by,
-            value=value,
-        )
 
     @classmethod
     def import_cookies(cls, driver: WebDriver, file_path: str) -> bool:
@@ -296,6 +168,10 @@ class Utils:
                 return False
 
         return True
+
+    @staticmethod
+    def extract_text(elements: Union[ResultSet[Tag], List[any]]) -> List[str]:
+        return [element.get_text() for element in elements]
 
     @classmethod
     def parse_currency_number(cls, __str: str) -> dict:
@@ -364,10 +240,11 @@ class Utils:
 
         response_text = cls._safe_parse_json(response_text)
 
-        error_message = response_text.get('message')
+        if isinstance(response_text, dict):
+            error_message = response_text.get('message')
 
-        if error_message:
-            raise MintosException(error_message)
+            if error_message:
+                raise MintosException(error_message)
 
         return response_text
 
@@ -385,6 +262,32 @@ class Utils:
         )
 
         return data
+
+    @staticmethod
+    def _wait_for_element(
+            driver: WebDriver,
+            by: str,
+            value: str,
+            timeout: int,
+            multiple: bool = False,
+    ) -> Union[WebElement, List[WebElement]]:
+        """
+        :param by: Tag to get element by (id, class name, xpath, tag name, etc.)
+        :param value: Value of the tag (Example: tag -> id, locator -> button-id)
+        :param timeout: Time to wait for element before raising TimeoutError
+        :param multiple: Specify whether to return multiple web elements that match tag and locator
+        :return: Web element specified by tag and locator
+        :raises TimeoutException: If the element is not located within the desired time span
+        """
+
+        element_attributes = (by, value)
+
+        WebDriverWait(driver, timeout).until(ec.visibility_of_element_located(element_attributes))
+
+        if multiple:
+            return driver.find_elements(by=by, value=value)
+
+        return driver.find_element(by=by, value=value)
 
     @classmethod
     def _parse_mintos_items_gen(cls, __obj: object) -> Generator:
