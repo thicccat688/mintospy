@@ -140,7 +140,8 @@ class API:
             max_interest_rate: float = None,
             min_interest_rate: float = None,
             loan_types: List[str] = None,
-            risk_scores: List[int] = None,
+            max_risk_score: float = None,
+            min_risk_score: float = None,
             strategies: List[str] = None,
             max_term: int = None,
             min_term: int = None,
@@ -170,7 +171,8 @@ class API:
         :param min_interest_rate: Only return notes up to this minimum interest rate
         :param loan_types: Only return notes composed of certain loan types
         (agricultural, business, car, invoice_financing, mortgage, pawnbroking, personal, short_term)
-        :param risk_scores: Only returns notes of a certain risk score (1-10 or "SW" for notes with suspended rating)
+        :param max_risk_score: Only returns notes below this risk score (1-10 or "SW" for notes with suspended rating)
+        :param min_risk_score: Only returns notes above this risk score (1-10 or "SW" for notes with suspended rating)
         :param strategies: Only return notes that were invested in with certain strategies
         :param max_term: Only return notes up to a maximum term
         :param min_term: Only return notes up to a minimum term
@@ -230,21 +232,25 @@ class API:
 
                 investment_params.append(new_method)
 
-        if isinstance(risk_scores, list):
-            for score in risk_scores:
-                if not isinstance(score, int) or score == 'SW':
-                    raise ValueError(
-                        'Risk score needs to be an integer between 1-10 or "SW" (When risk score is suspended).',
-                    )
+        if isinstance(max_risk_score, float):
+            if 1 < max_risk_score < 10:
+                raise ValueError(
+                    'Maximum risk score needs to be a number in between 1-10.',
+                )
 
-                if 1 > score > 10:
-                    raise ValueError(
-                        'Risk score can only be a number in between 1-10 or "SW" (When risk score is suspended).',
-                    )
+            maximum_score = ('max_lending_company_risk_score', max_risk_score)
 
-                new_score = ('mintos_scores[]', score)
+            investment_params.append(maximum_score)
 
-                investment_params.append(new_score)
+        if isinstance(min_risk_score, float):
+            if 1 < min_risk_score < 10:
+                raise ValueError(
+                    'Minimum risk score needs to be a number in between 1-10.',
+                )
+
+            minimum_score = ('min_lending_company_risk_score', min_risk_score)
+
+            investment_params.append(minimum_score)
 
         if isinstance(isin, str):
             if len(isin) != 12:
@@ -389,9 +395,9 @@ class API:
 
         securities_df = pd.DataFrame(merged_data)
 
-        securities_df.set_index(keys=['ISIN'])
+        securities_df.set_index(keys=['ISIN'], inplace=True)
 
-        return securities_df
+        return securities_df.to_dict('index') if raw else securities_df
 
     def get_loans(self, raw: bool = False) -> List[dict]:
         pass
@@ -563,7 +569,7 @@ class API:
 
         options.add_experimental_option('detach', True)
 
-        # options.add_argument("--headless")
+        #  options.add_argument("--headless")
         options.add_argument("--window-size=1920,1080")
 
         options.add_argument('--start-maximized')
@@ -606,4 +612,4 @@ if __name__ == '__main__':
 
     print('investments fetching duration --->', time.time() - t1)
 
-    # mintos_api.quit()
+    mintos_api.quit()

@@ -33,18 +33,19 @@ class Utils:
 
         loan_types = investments.select('a[data-testid=note-isin] + div')
 
-        risk_scores = investments.select('div[class*="mintos-score-color"]')
+        risk_scores = investments.select('span:-soup-contains("Mintos Risk Score") + div > span > div > div > div')
 
-        # Risk score, loan portfolio performance, loan servicer efficiency, buyback strength, and cooperation structure
-        rs, lpp, lse, bs, cs = [], [], [], [], []
+        subscores = investments.select('span:-soup-contains("Subscore") + div > div > div[class*="mintos-score-color"]')
+
+        # Subscores -> Loan portfolio performance, loan servicer efficiency, buyback strength, and cooperation structure
+        lpp, lse, bs, cs = [], [], [], []
 
         # Sort all values in to their respective arrays
-        for i in range(0, len(risk_scores), 5):
-            rs.append(risk_scores[i])
-            lpp.append(risk_scores[i+1])
-            lse.append(risk_scores[i+2])
-            bs.append(risk_scores[i+3])
-            cs.append(risk_scores[i+4])
+        for i in range(0, len(subscores), 4):
+            lpp.append(subscores[i+1])
+            lse.append(subscores[i+2])
+            bs.append(subscores[i+3])
+            cs.append(subscores[i+4])
 
         if notes:
             countries = investments.select('svg title')[:-4]
@@ -90,7 +91,7 @@ class Utils:
             'Country': parsed_countries,
             'Lending company': [lenders[i].get_text(strip=True) for i in range(0, len(lenders), 2)],
             'Legal entity': [lenders[i].get_text(strip=True) for i in range(1, len(lenders), 2)],
-            'Mintos Risk Score': cls.extract_text(rs),
+            'Mintos Risk Score': cls.extract_text(risk_scores),
             'Loan portfolio performance': cls.extract_text(lpp),
             'Loan servicer efficiency': cls.extract_text(lse),
             'Buyback strength': cls.extract_text(bs),
@@ -131,7 +132,7 @@ class Utils:
                     next_payment_date.append(cls.str_to_date(p))
 
                 else:
-                    next_payment_amount.append(cls.parse_currency_number(p))
+                    next_payment_amount.append(cls.parse_currency_number(p) or 'N/A')
 
             current_fields = {
                 'Remaining term': cls.extract_text(remaining_terms, return_type='str'),
@@ -207,7 +208,7 @@ class Utils:
             is_currency: bool = False,
             is_percentage: bool = False,
     ) -> List[any]:
-        return_types = ['float', 'date', 'str']
+        return_types = ['float', 'int', 'date', 'str']
 
         if return_type not in return_types:
             raise ValueError(f'Invalid return type, only {return_types} available.')
