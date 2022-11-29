@@ -381,19 +381,15 @@ class API:
 
         for o in parsed_list:
             for k in o:
-                v = merged_data.get(k)
-
-                if v:
+                if merged_data.get(k):
                     merged_data[k] += o[k]
 
                 else:
                     merged_data[k] = o[k]
 
-        print(merged_data)
-
         securities_df = pd.DataFrame(merged_data)
 
-        securities_df.set_index(keys=['isin'])
+        securities_df.set_index(keys=['ISIN'])
 
         return securities_df
 
@@ -493,8 +489,9 @@ class API:
         with open('cookies.pkl', 'wb') as f:
             pickle.dump(self.__driver.get_cookies(), f)
 
-    def logout(self) -> None:
-        self._make_request(url=ENDPOINTS.API_LOGOUT_URI)
+    def quit(self) -> None:
+        with open('cookies.pkl', 'wb') as f:
+            pickle.dump(self.__driver.get_cookies(), f)
 
         self.__driver.quit()
 
@@ -609,4 +606,4 @@ if __name__ == '__main__':
 
     print('investments fetching duration --->', time.time() - t1)
 
-    mintos_api.logout()
+    # mintos_api.quit()

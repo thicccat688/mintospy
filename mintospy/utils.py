@@ -14,6 +14,9 @@ import time
 import json
 
 
+CURRENCIES = CONSTANTS.CURRENCY_SYMBOLS
+
+
 class Utils:
     @classmethod
     def parse_securities(cls, driver: WebDriver, notes: bool, current: bool) -> Dict[str, list]:
@@ -83,7 +86,7 @@ class Utils:
         ]
 
         parsed_securities = {
-            'ISIN': cls.extract_text(isins),
+            'ISIN': cls.extract_text(isins, return_type='str'),
             'Country': parsed_countries,
             'Lending company': [lenders[i].get_text(strip=True) for i in range(0, len(lenders), 2)],
             'Legal entity': [lenders[i].get_text(strip=True) for i in range(1, len(lenders), 2)],
@@ -92,9 +95,14 @@ class Utils:
             'Loan servicer efficiency': cls.extract_text(lse),
             'Buyback strength': cls.extract_text(bs),
             'Cooperation structure': cls.extract_text(cs),
-            'Interest rate': cls.extract_text(interest_rates),
-            'Invested amount': cls.extract_text(invested_amounts),
-            'Received payments': cls.extract_text(received_payments),
+            'Loan type': cls.extract_text(loan_types, return_type='str'),
+            'Interest rate': cls.extract_text(interest_rates, is_percentage=True),
+            'Invested amount': cls.extract_text(invested_amounts, is_currency=True),
+            'Currency': cls.extract_text(invested_amounts, return_type='str', is_currency=True),
+            'Received payments': cls.extract_text(received_payments, is_currency=True),
+            'Pending payments': cls.extract_text(pending_payments, is_currency=True),
+            'In recovery': cls.extract_text(in_recovery, is_currency=True),
+            'Purchase date': cls.extract_text(purchase_dates, return_type='date'),
         }
 
         if current:
@@ -102,22 +110,46 @@ class Utils:
 
             principals = investments.select('span:-soup-contains("Outstanding Principal") + span > div > span')
 
-            payments = investments.select('span:-soup-contains("Next payment date / Next payment") + span > div > span')
+            # Get all rows with defined values in the "Next payment date / Next payment" column
+            next_pay = investments.select('span:-soup-contains("Next payment date / Next payment") + span > div > span')
 
-            parsed_payments = []
+            # Get all rows with "—" as their value in the "Next payment date / Next payment" column
+            undef_next_pay = investments.select('span:-soup-contains("Next payment date / Next payment") + div > span')
 
-            for val in payments:
-                if val.get_text(strip=True) == '—':
-                    parsed_payments.append('Late')
+            payments = [*next_pay, *undef_next_pay]
 
-                    parsed_payments.append('N/A')
+            next_payment_date, next_payment_amount = [], []
+
+            for p in cls.extract_text(payments, return_type='str'):
+                if p == '—':
+                    next_payment_date.append('Late')
+                    next_payment_amount.append('N/A')
 
                     continue
 
-                parsed_payments.append(val)
+                if p.count('.') == 2:
+                    next_payment_date.append(cls.str_to_date(p))
+
+                else:
+                    next_payment_amount.append(cls.parse_currency_number(p))
+
+            current_fields = {
+                'Remaining term': cls.extract_text(remaining_terms, return_type='str'),
+                'Outstanding principal': cls.extract_text(principals, is_currency=True),
+                'Next payment date': next_payment_date,
+                'Next payment amount': next_payment_amount,
+            }
+
+            parsed_securities.update(current_fields)
 
         else:
             finished_dates = investments.select('span:-soup-contains("Finished") + span')
+
+            finished_fields = {
+                'Finished date': cls.extract_text(finished_dates, return_type='date'),
+            }
+
+            parsed_securities.update(finished_fields)
 
         return parsed_securities
 
@@ -145,9 +177,6 @@ class Utils:
 
                 driver.refresh()
 
-                with open('cookies.pkl', 'wb') as w:
-                    pickle.dump(driver.get_cookies(), w)
-
                 return True
 
         except (FileNotFoundError, EOFError):
@@ -169,35 +198,80 @@ class Utils:
 
         return True
 
-    @staticmethod
-    def extract_text(elements: Union[ResultSet[Tag], List[any]]) -> List[str]:
-        return [element.get_text(strip=True) for element in elements]
+    @classmethod
+    def extract_text(
+            cls,
+            elements: Union[ResultSet[Tag], List[any]],
+            *,
+            return_type: str = 'float',
+            is_currency: bool = False,
+            is_percentage: bool = False,
+    ) -> List[any]:
+        return_types = ['float', 'date', 'str']
+
+        if return_type not in return_types:
+            raise ValueError(f'Invalid return type, only {return_types} available.')
+
+        if is_currency:
+            currency_return_types = ['float', 'str']
+
+            if return_type not in currency_return_types:
+                raise ValueError(f'Invalid return type, only {currency_return_types} available for currency parsing.')
+
+            if return_type == 'float':
+                return list(map(lambda element: cls.parse_currency_number(element.get_text(strip=True)), elements))
+
+            else:
+                return list(
+                    map(
+                        lambda element: cls.parse_currency_number(
+                            element.get_text(strip=True),
+                            return_type='currency',
+                        ),
+                        elements,
+                    )
+                )
+
+        if is_percentage:
+            percentage_return_types = ['float', 'str']
+
+            if return_type not in percentage_return_types:
+                raise ValueError(
+                    f'Invalid return type, only {percentage_return_types} available for percentage parsing.',
+                )
+
+            if return_type == 'float':
+                return list(map(lambda element: element.get_text(strip=True).replace('%', ''), elements))
+
+        if return_type == 'float':
+            return list(map(lambda element: float(element.get_text(strip=True)), elements))
+
+        if return_type == 'date':
+            return list(map(lambda element: cls.str_to_date(element.get_text(strip=True)), elements))
+
+        return list(map(lambda element: element.get_text(strip=True), elements))
 
     @classmethod
-    def parse_currency_number(cls, __str: str) -> dict:
-        default_return = {
-            'amount': 'N/A',
-            'currency': 'N/A',
-        }
+    def parse_currency_number(cls, __str: str, *, return_type: str = 'number') -> Union[float, str]:
+        return_types = ['currency', 'number']
 
-        if not isinstance(__str, str):
-            return default_return
+        if return_type not in return_types:
+            raise ValueError('Can only return currency or number from currency number.')
 
         __str = __str.strip()
 
         currency_sign = __str[0]
 
-        currency = CONSTANTS.CURRENCY_SYMBOLS.get(currency_sign)
+        currency = CURRENCIES.get(currency_sign)
 
-        if currency is None:
-            return default_return
+        if CURRENCIES is None:
+            raise ValueError(
+                f'Unknown currency symbol "{currency_sign}", these are the available currencies: {CURRENCIES}',
+            )
 
         amount = cls._str_to_float(__str.replace(currency_sign, '').strip())
 
-        return {
-            'amount': amount,
-            'currency': f'{currency} ({currency_sign})',
-        }
+        return amount if return_type == 'number' else f'{currency} ({currency_sign})'
 
     @classmethod
     def get_svg_title(cls, svg: WebElement) -> str:
