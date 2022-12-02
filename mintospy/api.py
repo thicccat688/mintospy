@@ -1,4 +1,3 @@
-from mintospy.exceptions import MintosException
 from mintospy.constants import CONSTANTS
 from mintospy.endpoints import ENDPOINTS
 from mintospy.utils import Utils
@@ -18,7 +17,6 @@ import pandas as pd
 import warnings
 import pickle
 import pyotp
-import math
 import time
 import os
 
@@ -337,67 +335,13 @@ class API:
             params=investment_params,
         )
 
-        if notes:
-            ixpath = '//h4[contains(text(), "Sets of Notes") and string-length(normalize-space())>14]'
+        from mintospy.network import SeleniumNetworkScraper as Scraper
 
-        else:
-            ixpath = '//span[contains(text(), "selected entries") and string-length(normalize-space())]'
+        s = Scraper(self.__driver)
 
-        try:
-            total_investments = self._wait_for_element(
-                tag='xpath',
-                locator=ixpath,
-                timeout=15,
-            )
+        print(s.get_events())
 
-        except TimeoutException:
-            raise MintosException(f'No {"Notes" if notes else "Claims"} with your criteria available.')
-
-        if notes:
-            total_investments = int(total_investments.text.split(' Sets')[0].strip())
-
-        else:
-            total_investments = int(total_investments.text.split('of ')[1].split(' selected')[0].strip())
-
-        if quantity > total_investments:
-            warnings.warn(
-                f'Getting you available investments (Only {total_investments} available).'
-            )
-
-        total_pages = math.ceil(total_investments / 300)
-        recalls = math.ceil(quantity / 300)
-
-        parsed_list = []
-
-        for i in range(recalls):
-            if i > total_pages:
-                break
-
-            if i > 0:
-                self._make_request(
-                    url=url,
-                    params=investment_params,
-                )
-
-            parsed_securities = Utils.parse_securities(driver=self.__driver, notes=notes, current=current)
-
-            parsed_list.append(parsed_securities)
-
-        merged_data = {}
-
-        for o in parsed_list:
-            for k in o:
-                if merged_data.get(k):
-                    merged_data[k] += o[k]
-
-                else:
-                    merged_data[k] = o[k]
-
-        securities_df = pd.DataFrame(merged_data)
-
-        securities_df.set_index(keys=['ISIN'], inplace=True)
-
-        return securities_df.to_dict('index') if raw else securities_df
+        return {}
 
     def get_loans(self, raw: bool = False) -> List[dict]:
         pass
