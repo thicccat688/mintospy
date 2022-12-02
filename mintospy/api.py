@@ -339,7 +339,15 @@ class API:
 
         s = Scraper(self.__driver)
 
-        print(s.get_events())
+        for log in s.get_events():
+            try:
+                if log['message']['params']['response']['url'] == url:
+                    print(log)
+
+            except KeyError:
+                continue
+
+        print(s.listen_for_event({'url': url, 'method': 'POST'}, timeout=10))
 
         return {}
 
