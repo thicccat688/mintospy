@@ -337,27 +337,16 @@ class API:
             params=investment_params,
         )
 
-        if notes:
-            ixpath = '//h4[contains(text(), "Sets of Notes") and string-length(normalize-space())>14]'
+        from mintospy.network import SeleniumNetworkScraper as NetworkScraper
 
-        else:
-            ixpath = '//span[contains(text(), "selected entries") and string-length(normalize-space())]'
+        scraper = NetworkScraper(self.__driver)
 
-        try:
-            total_investments = self._wait_for_element(
-                tag='xpath',
-                locator=ixpath,
-                timeout=15,
-            )
+        print(scraper.get_all())
 
-        except TimeoutException:
+        total_investments = 1
+
+        if total_investments == 0:
             raise MintosException(f'No {"Notes" if notes else "Claims"} with your criteria available.')
-
-        if notes:
-            total_investments = int(total_investments.text.split(' Sets')[0].strip())
-
-        else:
-            total_investments = int(total_investments.text.split('of ')[1].split(' selected')[0].strip())
 
         if quantity > total_investments:
             warnings.warn(
@@ -565,7 +554,8 @@ class API:
 
     @staticmethod
     def _create_driver() -> WebDriver:
-        options, service = webdriver.ChromeOptions(), Service(ChromeDriverManager().install())
+        options = webdriver.ChromeOptions()
+        service = Service(ChromeDriverManager().install())
 
         options.add_experimental_option('detach', True)
 
@@ -577,6 +567,8 @@ class API:
 
         options.add_argument('--no-sandbox')
         options.add_argument("--disable-extensions")
+
+        options.set_capability('goog:loggingPrefs', {'performance': 'ALL'})
 
         return webdriver.Chrome(options=options, service=service)
 
@@ -598,13 +590,13 @@ if __name__ == '__main__':
 
     print(time.time() - t1)
 
-    print(mintos_api.get_portfolio_data(currency='EUR'))
+    # print(mintos_api.get_portfolio_data(currency='EUR'))
 
-    print(mintos_api.get_net_annual_return(currency='EUR'))
+    # print(mintos_api.get_net_annual_return(currency='EUR'))
 
-    print(mintos_api.get_lending_companies())
+    # print(mintos_api.get_lending_companies())
 
-    print(mintos_api.get_currencies())
+    # print(mintos_api.get_currencies())
 
     t1 = time.time()
 
