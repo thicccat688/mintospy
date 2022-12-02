@@ -337,16 +337,27 @@ class API:
             params=investment_params,
         )
 
-        from mintospy.network import SeleniumNetworkScraper as NetworkScraper
+        if notes:
+            ixpath = '//h4[contains(text(), "Sets of Notes") and string-length(normalize-space())>14]'
 
-        scraper = NetworkScraper(self.__driver)
+        else:
+            ixpath = '//span[contains(text(), "selected entries") and string-length(normalize-space())]'
 
-        print(scraper.get_all())
+        try:
+            total_investments = self._wait_for_element(
+                tag='xpath',
+                locator=ixpath,
+                timeout=15,
+            )
 
-        total_investments = 1
-
-        if total_investments == 0:
+        except TimeoutException:
             raise MintosException(f'No {"Notes" if notes else "Claims"} with your criteria available.')
+
+        if notes:
+            total_investments = int(total_investments.text.split(' Sets')[0].strip())
+
+        else:
+            total_investments = int(total_investments.text.split('of ')[1].split(' selected')[0].strip())
 
         if quantity > total_investments:
             warnings.warn(
@@ -600,7 +611,7 @@ if __name__ == '__main__':
 
     t1 = time.time()
 
-    print(mintos_api.get_investments(currency='EUR', quantity=200, notes=True, current=True))
+    print(mintos_api.get_investments(currency='EUR', quantity=200, notes=False, current=False))
 
     print('investments fetching duration --->', time.time() - t1)
 

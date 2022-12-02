@@ -2,7 +2,7 @@ from mintospy.exceptions import MintosException
 from mintospy.constants import CONSTANTS
 from typing import Generator, Union
 from bs4 import BeautifulSoup
-from bs4.element import ResultSet, Tag
+from bs4.element import ResultSet
 from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.chrome.webdriver import WebDriver
@@ -41,7 +41,7 @@ class Utils:
         lpp, lse, bs, cs = [], [], [], []
 
         # Sort all values in to their respective arrays
-        for i in range(0, len(subscores), 4):
+        for i in range(0, len(subscores), 5):
             lpp.append(subscores[i+1])
             lse.append(subscores[i+2])
             bs.append(subscores[i+3])
@@ -91,18 +91,18 @@ class Utils:
             'Country': parsed_countries,
             'Lending company': [lenders[i].get_text(strip=True) for i in range(0, len(lenders), 2)],
             'Legal entity': [lenders[i].get_text(strip=True) for i in range(1, len(lenders), 2)],
-            'Mintos Risk Score': cls.extract_text(risk_scores),
-            'Loan portfolio performance': cls.extract_text(lpp),
-            'Loan servicer efficiency': cls.extract_text(lse),
-            'Buyback strength': cls.extract_text(bs),
-            'Cooperation structure': cls.extract_text(cs),
+            'Mintos Risk Score': cls.extract_risk_score_text(risk_scores),
+            'Loan portfolio performance': cls.extract_risk_score_text(lpp),
+            'Loan servicer efficiency': cls.extract_risk_score_text(lse),
+            'Buyback strength': cls.extract_risk_score_text(bs),
+            'Cooperation structure': cls.extract_risk_score_text(cs),
             'Loan type': cls.extract_text(loan_types, return_type='str'),
-            'Interest rate': cls.extract_text(interest_rates, is_percentage=True),
-            'Invested amount': cls.extract_text(invested_amounts, is_currency=True),
-            'Currency': cls.extract_text(invested_amounts, return_type='str', is_currency=True),
-            'Received payments': cls.extract_text(received_payments, is_currency=True),
-            'Pending payments': cls.extract_text(pending_payments, is_currency=True),
-            'In recovery': cls.extract_text(in_recovery, is_currency=True),
+            'Interest rate': cls.extract_percentage_text(interest_rates),
+            'Invested amount': cls.extract_currency_text(invested_amounts),
+            'Currency': cls.extract_currency_text(invested_amounts, return_type='str'),
+            'Received payments': cls.extract_currency_text(received_payments),
+            'Pending payments': cls.extract_currency_text(pending_payments),
+            'In recovery': cls.extract_currency_text(in_recovery),
             'Purchase date': cls.extract_text(purchase_dates, return_type='date'),
         }
 
@@ -136,7 +136,7 @@ class Utils:
 
             current_fields = {
                 'Remaining term': cls.extract_text(remaining_terms, return_type='str'),
-                'Outstanding principal': cls.extract_text(principals, is_currency=True),
+                'Outstanding principal': cls.extract_currency_text(principals),
                 'Next payment date': next_payment_date,
                 'Next payment amount': next_payment_amount,
             }
@@ -200,55 +200,64 @@ class Utils:
         return True
 
     @classmethod
-    def extract_text(
-            cls,
-            elements: Union[ResultSet[Tag], List[any]],
-            *,
-            return_type: str = 'float',
-            is_currency: bool = False,
-            is_percentage: bool = False,
-    ) -> List[any]:
-        return_types = ['float', 'int', 'date', 'str']
+    def extract_text(cls, elements: List[any], *, return_type: str = 'float') -> list:
+        return_types = ['float', 'date', 'str']
 
         if return_type not in return_types:
             raise ValueError(f'Invalid return type, only {return_types} available.')
-
-        if is_currency:
-            currency_return_types = ['float', 'str']
-
-            if return_type not in currency_return_types:
-                raise ValueError(f'Invalid return type, only {currency_return_types} available for currency parsing.')
-
-            if return_type == 'float':
-                return list(map(lambda element: cls.parse_currency_number(element.get_text(strip=True)), elements))
-
-            else:
-                return list(
-                    map(
-                        lambda element: cls.parse_currency_number(
-                            element.get_text(strip=True),
-                            return_type='currency',
-                        ),
-                        elements,
-                    )
-                )
-
-        if is_percentage:
-            percentage_return_types = ['float', 'str']
-
-            if return_type not in percentage_return_types:
-                raise ValueError(
-                    f'Invalid return type, only {percentage_return_types} available for percentage parsing.',
-                )
-
-            if return_type == 'float':
-                return list(map(lambda element: element.get_text(strip=True).replace('%', ''), elements))
 
         if return_type == 'float':
             return list(map(lambda element: float(element.get_text(strip=True)), elements))
 
         if return_type == 'date':
             return list(map(lambda element: cls.str_to_date(element.get_text(strip=True)), elements))
+
+        return list(map(lambda element: element.get_text(strip=True), elements))
+
+    @classmethod
+    def extract_risk_score_text(cls, elements: List[any]) -> list:
+        scores = []
+
+        for element in elements:
+            text = element.get_text(strip=True)
+
+            try:
+                scores.append(float(text))
+
+            except ValueError:
+                scores.append(text)
+
+        return scores
+
+    @classmethod
+    def extract_currency_text(cls, elements: List[any], *, return_type: str = 'float') -> list:
+        currency_return_types = ['float', 'str']
+
+        if return_type not in currency_return_types:
+            raise ValueError(f'Invalid return type, only {currency_return_types} available for currency parsing.')
+
+        if return_type == 'float':
+            return list(map(lambda element: cls.parse_currency_number(element.get_text(strip=True)), elements))
+
+        else:
+            return list(
+                map(
+                    lambda element: cls.parse_currency_number(element.get_text(strip=True), return_type='currency'),
+                    elements,
+                )
+            )
+        
+    @classmethod
+    def extract_percentage_text(cls, elements: List[any], *, return_type: str = 'float') -> list:
+        percentage_return_types = ['float', 'str']
+        
+        if return_type not in percentage_return_types:
+            raise ValueError(
+                f'Invalid return type, only {percentage_return_types} available for percentage parsing.',
+            )
+        
+        if return_type == 'float':
+            return list(map(lambda element: element.get_text(strip=True).replace('%', ''), elements))
 
         return list(map(lambda element: element.get_text(strip=True), elements))
 
