@@ -320,7 +320,7 @@ class API:
 
         response = self._make_fetch(
             url=url,
-            headers={'Content-Type': 'application/json'},
+            headers={'content-type': 'application/json', 'csrf-token': self.__csrf_token},
             data=investment_params,
         )
 
@@ -461,7 +461,7 @@ class API:
         url = Utils.mount_url(url, params)
 
         fetch_script = f'''
-        var data = await fetch({url}, {{
+        var response = await fetch("{url}", {{
             'method': 'POST',
             'credentials': 'include',
             'headers': {json.dumps(headers)},
