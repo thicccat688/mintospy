@@ -15,12 +15,12 @@ class ENDPOINTS:
 
     API_LENDING_COMPANIES_URI = f'{BASE_URI}/en/webapp-api/lender-companies'
 
+    API_INVESTMENTS_URI = f'{BASE_URI}/marketplace-api/v1/user/note-series/investments'
+
+    API_CLAIMS_URI = f'{BASE_URI}/en/webapp-api/user/investments'
+
     WEB_APP_URI = 'https://www.mintos.com/en'
 
     LOGIN_URI = f'{WEB_APP_URI}/login'
 
     OVERVIEW_URI = f'{WEB_APP_URI}/overview'
-
-    INVESTMENTS_URI = f'{WEB_APP_URI}/set-of-notes/investments'
-
-    CLAIMS_URI = f'{WEB_APP_URI}/my-investments'

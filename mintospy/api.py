@@ -18,6 +18,7 @@ import warnings
 import pickle
 import pyotp
 import time
+import json
 import os
 
 
@@ -48,6 +49,9 @@ class API:
         self.email = email
         self.__password = password
         self.__tfa_secret = tfa_secret
+
+        # Initialise CSRF token variable
+        self.__csrf_token = None
 
         # Initialise web driver session
         self.__driver = self._create_driver()
@@ -125,7 +129,6 @@ class API:
             quantity: int = 30,
             page: int = 1,
             notes: bool = True,
-            sort: str = 'interestRate',
             countries: List[str] = None,
             pending_payments: bool = None,
             amortization_methods: List[str] = None,
@@ -155,7 +158,6 @@ class API:
         :param quantity: Quantity of notes to get
         :param page: Page to get Notes from (Gets from first page by default)
         :param notes: Specify whether to get Notes or Claims (True -> Gets notes; False -> Gets claims)
-        :param sort: What to sort Notes by
         :param countries: What countries notes should be issued in
         :param pending_payments: If payments for notes should be pending or not
         :param amortization_methods: Amortization type of notes (Full, partial, interest-only, or bullet)
@@ -185,18 +187,20 @@ class API:
 
         currency_iso_code = CONSTANTS.get_currency_iso(currency)
 
-        investment_params = [
-            ('currencies[]', currency_iso_code),
-            ('sort_order', 'ASC' if ascending_sort else 'DESC'),
-            ('max_results', 300),
-            ('page', page),
-        ]
+        investment_params = {
+            'currency': currency_iso_code,
+            'sort_order': 'ASC' if ascending_sort else 'DESC',
+            'max_results': 300,
+            'page': page,
+        }
 
         if notes:
-            url = f'{ENDPOINTS.INVESTMENTS_URI}/{"current" if current else "finished"}'
+            url = f'{ENDPOINTS.API_INVESTMENTS_URI}/{"current" if current else "finished"}'
 
         else:
-            url = f'{ENDPOINTS.CLAIMS_URI}/{"current-investments" if current else "finished-investments"}'
+            url = ENDPOINTS.API_CLAIMS_URI
+
+            investment_params['status'] = 1 if current else 0
 
         if page < 1:
             raise ValueError('Page must be superior or equal to 1.')
@@ -205,30 +209,31 @@ class API:
             raise ValueError('You can only filter by ISIN or a Claim ID.')
 
         if isinstance(countries, list):
-            for country in countries:
-                new_country = ('countries[]', CONSTANTS.get_country_iso(country))
+            investment_params['countries'] = []
 
-                investment_params.append(new_country)
+            for country in countries:
+                investment_params['countries'].append(CONSTANTS.get_country_iso(country))
+
+        if isinstance(lending_companies, list):
+            investment_params['lenderGroups'] = []
 
             for lender in lending_companies:
-                new_lender = ('lender_groups[]', CONSTANTS.get_lending_company_id(lender))
-
-                investment_params.append(new_lender)
+                investment_params['lenderGroups'].append(CONSTANTS.get_lending_company_id(lender))
 
         if isinstance(loan_types, list):
+            investment_params['pledges'] = []
+
             for type_ in loan_types:
                 if type_ not in CONSTANTS.LOAN_TYPES:
                     raise ValueError(f'Loan type must be one of the following: {", ".join(CONSTANTS.LOAN_TYPES)}')
 
-                new_type = ('pledges[]', type_)
-
-                investment_params.append(new_type)
+                investment_params['pledges'].append(type_)
 
         if isinstance(amortization_methods, list):
-            for method in amortization_methods:
-                new_method = ('schedule_types[]', CONSTANTS.get_amoritzation_method_id(method))
+            investment_params['scheduleTypes'] = []
 
-                investment_params.append(new_method)
+            for method in amortization_methods:
+                investment_params['schedule_types'].append(CONSTANTS.get_amoritzation_method_id(method))
 
         if isinstance(max_risk_score, float):
             if 1 < max_risk_score < 10:
@@ -236,9 +241,7 @@ class API:
                     'Maximum risk score needs to be a number in between 1-10.',
                 )
 
-            maximum_score = ('max_lending_company_risk_score', max_risk_score)
-
-            investment_params.append(maximum_score)
+            investment_params['maxLendingCompanyRiskScore'] = max_risk_score
 
         if isinstance(min_risk_score, float):
             if 1 < min_risk_score < 10:
@@ -246,110 +249,82 @@ class API:
                     'Minimum risk score needs to be a number in between 1-10.',
                 )
 
-            minimum_score = ('min_lending_company_risk_score', min_risk_score)
-
-            investment_params.append(minimum_score)
+            investment_params['minLendingCompanyRiskScore'] = min_risk_score
 
         if isinstance(isin, str):
             if len(isin) != 12:
                 raise ValueError('ISIN must be 12 characters long.')
 
-            new_isin = ('isin', isin)
-
-            investment_params.append(new_isin)
+            investment_params['isin'] = isin
 
         if isinstance(late_loan_exposure, list):
+            investment_params['lateLoanExposures'] = []
+
             for exposure in late_loan_exposure:
                 if exposure not in CONSTANTS.LATE_LOAN_EXPOSURES:
                     raise ValueError(
                         f'Late loan exposure must be one of the following: {", ".join(CONSTANTS.LATE_LOAN_EXPOSURES)}',
                     )
 
-                new_exposure = ('late_loan_exposure[]', exposure)
-
-                investment_params.append(new_exposure)
+                investment_params['lateLoanExposures'].append(late_loan_exposure)
 
         if isinstance(pending_payments, bool):
-            new_pending_status = ('pending_payments_status[]', 1 if pending_payments else 0)
+            if notes:
+                investment_params['pending_payments_status'] = 1 if pending_payments else 0
 
-            investment_params.append(new_pending_status)
+            else:
+                investment_params['hasPendingPayments'] = pending_payments
 
         if isinstance(listed_for_sale, bool):
-            new_sale_status = ('listed[]', 1 if listed_for_sale else 0)
+            if notes:
+                investment_params['listed_for_sale_status'] = 1 if listed_for_sale else 0
 
-            investment_params.append(new_sale_status)
+            else:
+                investment_params['listedForSale'] = listed_for_sale
 
         if isinstance(lender_statuses, list):
+            investment_params['lenderStatuses'] = []
+
             for status in lender_statuses:
                 if status not in CONSTANTS.LENDING_COMPANY_STATUSES:
                     raise ValueError(
                         f'Lender status must be one of the following: {", ".join(CONSTANTS.LENDING_COMPANY_STATUSES)}',
                     )
 
-                new_company_status = ('company_status[]', status)
-
-                investment_params.append(new_company_status)
-
-        if isinstance(sort, str):
-            new_sort = ('sort_field', sort)
-
-            investment_params.append(new_sort)
+                investment_params['lenderStatuses'].append(status)
 
         if isinstance(include_manual_investments, bool):
-            new_include_manual_investements = ('include_manual_investments', include_manual_investments)
+            if notes:
+                investment_params['includeManualInvestments'] = include_manual_investments
 
-            investment_params.append(new_include_manual_investements)
+            else:
+                investment_params['include_manual_investments'] = 1 if include_manual_investments else 0
 
         if isinstance(max_interest_rate, float):
-            new_max_interest_rate = ('max_interest', max_interest_rate)
-
-            investment_params.append(new_max_interest_rate)
-
-        if isinstance(max_term, float):
-            new_max_term = ('max_term', max_term)
-
-            investment_params.append(new_max_term)
+            investment_params['maxInterestRate'] = max_interest_rate
 
         if isinstance(min_interest_rate, int):
-            new_min_interest_rate = ('min_interest', min_interest_rate)
+            investment_params['minInterestRate'] = min_interest_rate
 
-            investment_params.append(new_min_interest_rate)
+        if isinstance(max_term, float):
+            investment_params['termTo'] = max_term
 
         if isinstance(min_term, int):
-            new_min_term = ('min_term', min_term)
-
-            investment_params.append(new_min_term)
+            investment_params['termFrom'] = min_term
 
         if isinstance(max_purchased_date, datetime):
-            new_max_purchased_date = ('date_to', max_purchased_date.strftime('%d.%m.%Y'))
-
-            investment_params.append(new_max_purchased_date)
+            investment_params['investmentDateTo'] = max_purchased_date.strftime('%d.%m.%Y')
 
         if isinstance(min_purchased_date, datetime):
-            new_min_purchased_date = ('date_from', min_purchased_date.strftime('%d.%m.%Y'))
+            investment_params['investmentDateFrom'] = min_purchased_date.strftime('%d.%m.%Y')
 
-            investment_params.append(new_min_purchased_date)
-
-        self._make_request(
+        response = self._make_fetch(
             url=url,
-            params=investment_params,
+            headers={'Content-Type': 'application/json'},
+            data=investment_params,
         )
 
-        from mintospy.network import SeleniumNetworkScraper as Scraper
-
-        s = Scraper(self.__driver)
-
-        for log in s.get_events():
-            try:
-                if log['message']['params']['response']['url'] == url:
-                    print(log)
-
-            except KeyError:
-                continue
-
-        print(s.listen_for_event({'url': url, 'method': 'POST'}, timeout=10))
-
-        return {}
+        return response
 
     def get_loans(self, raw: bool = False) -> List[dict]:
         pass
@@ -447,6 +422,14 @@ class API:
         with open('cookies.pkl', 'wb') as f:
             pickle.dump(self.__driver.get_cookies(), f)
 
+        parsed_overview = BeautifulSoup(self.__driver.page_source, 'lxml')
+
+        try:
+            self.__csrf_token = parsed_overview.select('meta[data-hid="csrf-token"]')[0]['content']
+
+        except (IndexError, KeyError):
+            warnings.warn('No CSRF token found, issues might occur in client-sent fetch-based requests.')
+
     def quit(self) -> None:
         with open('cookies.pkl', 'wb') as f:
             pickle.dump(self.__driver.get_cookies(), f)
@@ -459,6 +442,38 @@ class API:
         """
 
         return pyotp.TOTP(self.__tfa_secret).now()
+
+    def _make_fetch(
+            self,
+            url: str,
+            headers: dict = None,
+            params: Union[dict, List[tuple]] = None,
+            data: dict = None,
+    ):
+        """
+        Request handler that makes fetch requests directly in the webdriver's console
+        :param url: URL of endpoint to call
+        :param headers: Headers to send in the HTTP request
+        :param params: Query parameters to send in HTTP request (Send as list of tuples for duplicate query strings)
+        :return: HTML response from HTTP request
+        """
+
+        url = Utils.mount_url(url, params)
+
+        fetch_script = f'''
+        var data = await fetch({url}, {{
+            'method': 'POST',
+            'credentials': 'include',
+            'headers': {json.dumps(headers)},
+            'body': {json.dumps(data)},
+        }})
+        
+        await response.json()
+        '''
+
+        print(fetch_script)
+
+        return self.__driver.execute_script(fetch_script)
 
     def _make_request(
             self,
@@ -474,7 +489,7 @@ class API:
         :return: HTML response from HTTP request
         """
 
-        url = Utils.mount_url(url=url, params=params)
+        url = Utils.mount_url(url, params)
 
         self.__driver.get(url)
 
