@@ -62,6 +62,18 @@ class API:
         # Automatically authenticate to Mintos API upon API object initialization
         self.login()
 
+        # Extract CSRF token
+        parsed_overview = BeautifulSoup(self.__driver.page_source, 'lxml')
+
+        try:
+            self.__csrf_token = parsed_overview.select('meta[data-hid="csrf-token"]')[0]['content']
+
+            if not self.__csrf_token:
+                warnings.warn('No CSRF token found, issues might occur in client-sent fetch-based requests.')
+
+        except (IndexError, KeyError):
+            warnings.warn('No CSRF token found, issues might occur in client-sent fetch-based requests.')
+
     def get_portfolio_data(self, currency: str) -> dict:
         """
         :param currency: Currency of portfolio to get data from (EUR, KZT, PLN, etc.)
@@ -127,8 +139,9 @@ class API:
             self,
             currency: str,
             quantity: int = 30,
-            page: int = 1,
+            start_page: int = 1,
             notes: bool = True,
+            sort_field: str = 'initialAmount',
             countries: List[str] = None,
             pending_payments: bool = None,
             amortization_methods: List[str] = None,
@@ -152,13 +165,15 @@ class API:
             include_manual_investments: bool = True,
             ascending_sort: bool = False,
             raw: bool = False,
-    ) -> Union[pd.DataFrame, List[dict]]:
+    ) -> dict:
         """
         :param currency: Currency that notes are denominated in
         :param quantity: Quantity of notes to get
-        :param page: Page to get Notes from (Gets from first page by default)
+        :param start_page: Page to start getting Notes from (Gets from first page by default)
         :param notes: Specify whether to get Notes or Claims (True -> Gets notes; False -> Gets claims)
-        :param countries: What countries notes should be issued in
+        :param sort_field: Field to sort by (isin, mintosRiskScoreDecimal, lender, interestRate, maturityDate,
+        createdAt, initialAmount, amount)
+        :param countries: What countries notes should be issued from
         :param pending_payments: If payments for notes should be pending or not
         :param amortization_methods: Amortization type of notes (Full, partial, interest-only, or bullet)
         :param claim_id: ID of claim to filter by
@@ -182,16 +197,23 @@ class API:
         :param include_manual_investments: Include notes that were purchased manually, instead of by auto invest
         :param ascending_sort: Sort notes in ascending order based on "sort" argument if True, otherwise sort descending
         :param raw: Return raw notes JSON if set to True, or returns pandas dataframe of notes if set to False
-        :return: Pandas DataFrame or raw JSON of notes (Chosen in the "raw" argument)
+        :return: Pandas DataFrame or raw JSON of notes (Chosen in the "raw" argument), extra data, and pagination data
         """
 
         currency_iso_code = CONSTANTS.get_currency_iso(currency)
 
+        max_results = 300
+
         investment_params = {
             'currency': currency_iso_code,
-            'sort_order': 'ASC' if ascending_sort else 'DESC',
-            'max_results': 300,
-            'page': page,
+            'pagination': {
+                'maxResults': max_results,
+                'page': start_page,
+            },
+            'sorting': {
+                'sortField': sort_field,
+                'sortOrder': 'ASC' if ascending_sort else 'DESC',
+            },
         }
 
         if notes:
@@ -202,8 +224,8 @@ class API:
 
             investment_params['status'] = 1 if current else 0
 
-        if page < 1:
-            raise ValueError('Page must be superior or equal to 1.')
+        if start_page < 1:
+            raise ValueError('Start page must be superior or equal to 1.')
 
         if isin and claim_id:
             raise ValueError('You can only filter by ISIN or a Claim ID.')
@@ -318,13 +340,58 @@ class API:
         if isinstance(min_purchased_date, datetime):
             investment_params['investmentDateFrom'] = min_purchased_date.strftime('%d.%m.%Y')
 
+        total_retrieved = 0
+
+        request_headers = {
+            'content-type': 'application/json',
+            'anti-csrf-token': self.__csrf_token,
+        }
+
         response = self._make_fetch(
             url=url,
-            headers={'content-type': 'application/json', 'csrf-token': self.__csrf_token},
+            headers=request_headers,
             data=investment_params,
         )
 
-        return response
+        total_retrieved += max_results
+
+        responses = [response]
+
+        while total_retrieved < quantity:
+            if not response['pagination']['hasNextPage']:
+                break
+
+            investment_params['pagination']['page'] += 1
+
+            next_response = self._make_fetch(
+                url=url,
+                headers=request_headers,
+                data=investment_params,
+            )
+
+            responses.append(next_response)
+
+            total_retrieved += 300
+
+        parsed_response = {
+            'items': [],
+            'extraData': response['extraData'],
+            'total_investments': response['pagination']['total'],
+        }
+
+        for resp in responses:
+            parsed_response['items'].extend(resp['items'])
+
+        if raw:
+            return parsed_response
+
+        items, extra_data, total_investments = parsed_response.values()
+
+        return {
+            'items': pd.DataFrame.from_records(Utils.parse_investments(items)).set_index('ISIN'),
+            'extra_data': extra_data,
+            'total_investments': total_investments,
+        }
 
     def get_loans(self, raw: bool = False) -> List[dict]:
         pass
@@ -422,14 +489,6 @@ class API:
         with open('cookies.pkl', 'wb') as f:
             pickle.dump(self.__driver.get_cookies(), f)
 
-        parsed_overview = BeautifulSoup(self.__driver.page_source, 'lxml')
-
-        try:
-            self.__csrf_token = parsed_overview.select('meta[data-hid="csrf-token"]')[0]['content']
-
-        except (IndexError, KeyError):
-            warnings.warn('No CSRF token found, issues might occur in client-sent fetch-based requests.')
-
     def quit(self) -> None:
         with open('cookies.pkl', 'wb') as f:
             pickle.dump(self.__driver.get_cookies(), f)
@@ -465,13 +524,11 @@ class API:
             'method': 'POST',
             'credentials': 'include',
             'headers': {json.dumps(headers)},
-            'body': {json.dumps(data)},
+            'body': JSON.stringify({json.dumps(data)}),
         }})
         
-        await response.json()
+        return await response.json()
         '''
-
-        print(fetch_script)
 
         return self.__driver.execute_script(fetch_script)
 
@@ -537,7 +594,7 @@ class API:
 
         options.add_experimental_option('detach', True)
 
-        #  options.add_argument("--headless")
+        options.add_argument("--headless")
         options.add_argument("--window-size=1920,1080")
 
         options.add_argument('--start-maximized')
@@ -578,7 +635,9 @@ if __name__ == '__main__':
 
     t1 = time.time()
 
-    print(mintos_api.get_investments(currency='EUR', quantity=200, notes=False, current=False))
+    investments = mintos_api.get_investments(currency='EUR', quantity=200, notes=True, current=True)
+
+    pd.set_option('display.max_columns', None)
 
     print('investments fetching duration --->', time.time() - t1)
 

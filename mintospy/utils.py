@@ -8,7 +8,7 @@ from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.chrome.webdriver import WebDriver
 from selenium.webdriver.support.ui import WebDriverWait
 from datetime import datetime, date
-from typing import Dict, List
+from typing import List
 import pickle
 import time
 import json
@@ -19,140 +19,53 @@ CURRENCIES = CONSTANTS.CURRENCY_SYMBOLS
 
 class Utils:
     @classmethod
-    def parse_securities(cls, driver: WebDriver, notes: bool, current: bool) -> Dict[str, list]:
-        cls._wait_for_element(
-            driver=driver,
-            by='xpath',
-            value='//a[@data-testid="note-isin"]',
-            timeout=15,
-        )
+    def parse_investments(cls, investments: List[dict]) -> List[dict]:
+        new_items = []
 
-        investments = BeautifulSoup(driver.page_source, 'html.parser')
+        for idx, item in enumerate(investments):
+            new_items.append({})
 
-        isins = investments.select('a[data-testid=note-isin]')
+            for k, v in item.items():
+                if k == 'isin':
+                    new_items[idx]['ISIN'] = v
 
-        loan_types = investments.select('a[data-testid=note-isin] + div')
+                if isinstance(v, dict):
+                    if v.get('amount'):
+                        new_items[idx][cls.camel_to_snake(k)] = cls._str_to_float(v['amount'])
 
-        risk_scores = investments.select('span:-soup-contains("Mintos Risk Score") + div > span > div > div > div')
+                        currency = v['currency']
 
-        subscores = investments.select('span:-soup-contains("Subscore") + div > div > div[class*="mintos-score-color"]')
+                        if new_items[idx].get('currency') is None:
+                            new_items[idx]['currency'] = currency
 
-        # Subscores -> Loan portfolio performance, loan servicer efficiency, buyback strength, and cooperation structure
-        lpp, lse, bs, cs = [], [], [], []
+                    if v.get('score'):
+                        n = {'score': cls._str_to_float(v['score'])}
 
-        # Sort all values in to their respective arrays
-        for i in range(0, len(subscores), 5):
-            lpp.append(subscores[i+1])
-            lse.append(subscores[i+2])
-            bs.append(subscores[i+3])
-            cs.append(subscores[i+4])
+                        n.update({cls.camel_to_snake(k): cls._str_to_float(v) for k, v in v['subscores'].items()})
 
-        if notes:
-            countries = investments.select('svg title')[:-4]
-
-            parsed_countries = [
-                f'{countries[i].get_text()} ({countries[i + 1].get_text()})'
-                for i in range(0, len(countries), 2)
-            ]
-
-        else:
-            countries = investments.select('span:-soup-contains("Lending company") > div > img')
-
-            parsed_countries = [
-                f'{countries[i].get("title") or "N/A"} ({countries[i + 1].get("title") or "N/A"})'
-                for i in range(0, len(countries), 2)
-            ]
-
-        if notes:
-            lenders_selector = 'span[class="mw-u-o-hidden m-u-to-ellipsis mw-u-width-full"]'
-
-        else:
-            lenders_selector = 'div > img + span > div > span'
-
-        lenders = investments.select(lenders_selector)
-
-        interest_rates = investments.select('span:-soup-contains("Interest rate") + span')
-
-        purchase_dates = investments.select('span:-soup-contains("Purchase date") + span > div > span')
-
-        invested_amounts = investments.select('span:-soup-contains("Invested amount") + span > div > span')
-
-        received_payments = investments.select('span:-soup-contains("Received payments") + span > div > span')
-
-        pending_data = investments.select('span:-soup-contains("Pending Payments / In recovery") + div > span')
-
-        pending_payments, in_recovery = [
-            [pending_data[i] for i in range(0, len(pending_data), 2)],
-            [pending_data[i] for i in range(1, len(pending_data), 2)],
-        ]
-
-        parsed_securities = {
-            'ISIN': cls.extract_text(isins, return_type='str'),
-            'Country': parsed_countries,
-            'Lending company': [lenders[i].get_text(strip=True) for i in range(0, len(lenders), 2)],
-            'Legal entity': [lenders[i].get_text(strip=True) for i in range(1, len(lenders), 2)],
-            'Mintos Risk Score': cls.extract_risk_score_text(risk_scores),
-            'Loan portfolio performance': cls.extract_risk_score_text(lpp),
-            'Loan servicer efficiency': cls.extract_risk_score_text(lse),
-            'Buyback strength': cls.extract_risk_score_text(bs),
-            'Cooperation structure': cls.extract_risk_score_text(cs),
-            'Loan type': cls.extract_text(loan_types, return_type='str'),
-            'Interest rate': cls.extract_percentage_text(interest_rates),
-            'Invested amount': cls.extract_currency_text(invested_amounts),
-            'Currency': cls.extract_currency_text(invested_amounts, return_type='str'),
-            'Received payments': cls.extract_currency_text(received_payments),
-            'Pending payments': cls.extract_currency_text(pending_payments),
-            'In recovery': cls.extract_currency_text(in_recovery),
-            'Purchase date': cls.extract_text(purchase_dates, return_type='date'),
-        }
-
-        if current:
-            remaining_terms = investments.select('span:-soup-contains("Remaining term") + span')
-
-            principals = investments.select('span:-soup-contains("Outstanding Principal") + span > div > span')
-
-            # Get all rows with defined values in the "Next payment date / Next payment" column
-            next_pay = investments.select('span:-soup-contains("Next payment date / Next payment") + span > div > span')
-
-            # Get all rows with "—" as their value in the "Next payment date / Next payment" column
-            undef_next_pay = investments.select('span:-soup-contains("Next payment date / Next payment") + div > span')
-
-            payments = [*next_pay, *undef_next_pay]
-
-            next_payment_date, next_payment_amount = [], []
-
-            for p in cls.extract_text(payments, return_type='str'):
-                if p == '—':
-                    next_payment_date.append('Late')
-                    next_payment_amount.append('N/A')
+                        new_items[idx].update(n)
 
                     continue
 
-                if p.count('.') == 2:
-                    next_payment_date.append(cls.str_to_date(p))
+                new_items[idx][cls.camel_to_snake(k)] = v
 
-                else:
-                    next_payment_amount.append(cls.parse_currency_number(p) or 'N/A')
+        return new_items
 
-            current_fields = {
-                'Remaining term': cls.extract_text(remaining_terms, return_type='str'),
-                'Outstanding principal': cls.extract_currency_text(principals),
-                'Next payment date': next_payment_date,
-                'Next payment amount': next_payment_amount,
-            }
+    @classmethod
+    def camel_to_snake(cls, __str: str) -> str:
+        assert isinstance(__str, str), 'You can only convert a string from camel case to snake case'
 
-            parsed_securities.update(current_fields)
+        new_string = ''
 
-        else:
-            finished_dates = investments.select('span:-soup-contains("Finished") + span')
+        for i, s in enumerate(__str):
+            if s.isupper() and i != 0:
+                new_string += f'_{s.lower()}'
 
-            finished_fields = {
-                'Finished date': cls.extract_text(finished_dates, return_type='date'),
-            }
+                continue
 
-            parsed_securities.update(finished_fields)
+            new_string += s
 
-        return parsed_securities
+        return new_string
 
     @classmethod
     def import_cookies(cls, driver: WebDriver, file_path: str) -> bool:
