@@ -50,9 +50,6 @@ class API:
         self.__password = password
         self.__tfa_secret = tfa_secret
 
-        # Initialise CSRF token variable
-        self.__csrf_token = None
-
         # Initialise web driver session
         self.__driver = self._create_driver()
 
@@ -63,16 +60,16 @@ class API:
         self.login()
 
         # Extract CSRF token
-        parsed_overview = BeautifulSoup(self.__driver.page_source, 'lxml')
+        self.__csrf_token = self._wait_for_element(
+            tag='css selector',
+            locator='meta[data-hid="csrf-token"]',
+            timeout=10,
+        )
 
-        try:
-            self.__csrf_token = parsed_overview.select('meta[data-hid="csrf-token"]')[0]['content']
+        print(self.__csrf_token)
 
-            if not self.__csrf_token:
-                warnings.warn('No CSRF token found, issues might occur in client-sent fetch-based requests.')
-
-        except (IndexError, KeyError):
-            warnings.warn('No CSRF token found, issues might occur in client-sent fetch-based requests.')
+        if isinstance(self.__csrf_token, str):
+            raise ValueError('Failed to extract CSRF token.')
 
     def get_portfolio_data(self, currency: str) -> dict:
         """
@@ -165,11 +162,11 @@ class API:
             include_manual_investments: bool = True,
             ascending_sort: bool = False,
             raw: bool = False,
-    ) -> dict:
+    ) -> Union[pd.DataFrame, List[dict]]:
         """
-        :param currency: Currency that notes are denominated in
-        :param quantity: Quantity of notes to get
-        :param start_page: Page to start getting Notes from (Gets from first page by default)
+        :param currency: Currency that investments are denominated in
+        :param quantity: Quantity of investments to get
+        :param start_page: Page to start getting investments from (Gets from first page by default)
         :param notes: Specify whether to get Notes or Claims (True -> Gets notes; False -> Gets claims)
         :param sort_field: Field to sort by (isin, mintosRiskScoreDecimal, lender, interestRate, maturityDate,
         createdAt, initialAmount, amount)
@@ -373,25 +370,23 @@ class API:
 
             total_retrieved += 300
 
-        parsed_response = {
-            'items': [],
-            'extraData': response['extraData'],
-            'total_investments': response['pagination']['total'],
-        }
+        items = []
 
         for resp in responses:
-            parsed_response['items'].extend(resp['items'])
+            print(resp)
 
-        if raw:
-            return parsed_response
+            if notes:
+                items.extend(resp['items'])
 
-        items, extra_data, total_investments = parsed_response.values()
+            else:
+                items.extend(resp['data'])
 
-        return {
-            'items': pd.DataFrame.from_records(Utils.parse_investments(items)).set_index('ISIN'),
-            'extra_data': extra_data,
-            'total_investments': total_investments,
-        }
+        if raw or len(items) == 0:
+            return items
+
+        row_index = 'ISIN' if notes else 'id'
+
+        return pd.DataFrame.from_records(Utils.parse_investments(items)).set_index(row_index).fillna('N/A')
 
     def get_loans(self, raw: bool = False) -> List[dict]:
         pass
@@ -594,7 +589,7 @@ class API:
 
         options.add_experimental_option('detach', True)
 
-        options.add_argument("--headless")
+        # options.add_argument("--headless")
         options.add_argument("--window-size=1920,1080")
 
         options.add_argument('--start-maximized')
@@ -635,9 +630,9 @@ if __name__ == '__main__':
 
     t1 = time.time()
 
-    investments = mintos_api.get_investments(currency='EUR', quantity=200, notes=True, current=True)
+    investments = mintos_api.get_investments(currency='KZT', quantity=200, notes=False, current=True)
 
-    pd.set_option('display.max_columns', None)
+    print(investments)
 
     print('investments fetching duration --->', time.time() - t1)
 
