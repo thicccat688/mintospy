@@ -188,9 +188,13 @@ class API:
             if sort_field not in CONSTANTS.NOTES_SORT_FIELDS:
                 raise ValueError(f'{sort_field} not in notes sort fields: {", ".join(CONSTANTS.NOTES_SORT_FIELDS)}.')
 
+            parsed_sort_field = CONSTANTS.NOTES_SORT_FIELDS[sort_field]
+
         else:
             if sort_field not in CONSTANTS.CLAIMS_SORT_FIELDS:
                 raise ValueError(f'{sort_field} not in claims sort fields: {", ".join(CONSTANTS.CLAIMS_SORT_FIELDS)}.')
+
+            parsed_sort_field = CONSTANTS.NOTES_SORT_FIELDS[sort_field]
 
         investment_params = {'currency': currency_iso_code}
 
@@ -201,7 +205,7 @@ class API:
                     'page': start_page,
                 },
                 'sorting': {
-                    'sortField': sort_field,
+                    'sortField': parsed_sort_field,
                     'sortOrder': 'ASC' if ascending_sort else 'DESC',
                 },
             }
@@ -211,7 +215,7 @@ class API:
         else:
             extra_data = {
                 'max_results': CONSTANTS.MAX_RESULTS,
-                'sort_field': sort_field,
+                'sort_field': parsed_sort_field,
                 'sort_order': 'ASC' if ascending_sort else 'DESC',
                 'format': 'json',
             }
@@ -547,6 +551,8 @@ class API:
         return await response.json()
         '''
 
+        print(fetch_script)
+
         return self.__driver.execute_script(fetch_script)
 
     def _wait_for_element(
@@ -582,7 +588,7 @@ class API:
 
         content = s.get(ENDPOINTS.WEB_APP_URI).text
 
-        parsed_content = BeautifulSoup(content, 'lxml')
+        parsed_content = BeautifulSoup(content, 'html.parser')
 
         # Extract CSRF token
         csrf_token = parsed_content.select('meta[data-hid="csrf-token"]')[0]['content']
@@ -637,13 +643,13 @@ if __name__ == '__main__':
 
     print(time.time() - t1)
 
-    print(mintos_api.get_portfolio_data(currency='EUR'))
+    # print(mintos_api.get_portfolio_data(currency='EUR'))
 
-    print(mintos_api.get_net_annual_return(currency='EUR'))
+    # print(mintos_api.get_net_annual_return(currency='EUR'))
 
-    print(mintos_api.get_lending_companies())
+    # print(mintos_api.get_lending_companies())
 
-    print(mintos_api.get_currencies())
+    # print(mintos_api.get_currencies())
 
     t1 = time.time()
 
@@ -652,8 +658,6 @@ if __name__ == '__main__':
         quantity=200,
         notes=False,
         current=True,
-        max_risk_score=10,
-        min_risk_score=0,
     )
 
     print(investments)
