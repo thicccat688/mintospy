@@ -123,7 +123,7 @@ class API:
             quantity: int = 30,
             start_page: int = 1,
             notes: bool = True,
-            sort_field: str = 'initialAmount',
+            sort_field: str = 'invested_amount',
             countries: List[str] = None,
             pending_payments: bool = None,
             amortization_methods: List[str] = None,
