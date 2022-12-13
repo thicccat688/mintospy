@@ -160,10 +160,36 @@ class CONSTANTS:
         'defaulted',
     ]
 
+    NOTES_SORT_FIELDS = {
+        'isin': 'isin',
+        'risk_score': 'mintosRiskScoreDecimal',
+        'lending_company': 'lender',
+        'interest_rate': 'interestRate',
+        'remaining_term': 'maturityDate',
+        'purchase_date': 'createdAt',
+        'invested_amount': 'initialAmount',
+        'outstanding_principal': 'amount',
+    }
+
+    CLAIMS_SORT_FIELDS = {
+        'id': 'id',
+        'lending_company': 'lender_group',
+        'interest_rate': 'interest_rate',
+        'remaining_term': 'term',
+        'purchase_date': 'purchased_at',
+        'invested_amount': 'initial_amount',
+        'outstanding_principal': 'amount',
+        'next_payment_date': 'next_planned_payment_date',
+        'received_payments': 'received_amount',
+        'pending_payments': 'pending_payments_amount',
+    }
+
     SESSION_COOKIES = {
         'PHPSESSID',
         'MW_SESSION_ID',
     }
+
+    MAX_RESULTS = 300
 
     @classmethod
     def get_currency_iso(cls, currency: str) -> int:

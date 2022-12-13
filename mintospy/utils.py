@@ -2,124 +2,70 @@ from mintospy.exceptions import MintosException
 from mintospy.constants import CONSTANTS
 from typing import Generator, Union
 from bs4 import BeautifulSoup
-from bs4.element import ResultSet, Tag
+from bs4.element import ResultSet
 from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.chrome.webdriver import WebDriver
 from selenium.webdriver.support.ui import WebDriverWait
 from datetime import datetime, date
-from typing import Dict, List
+from typing import List
 import pickle
 import time
 import json
 
 
+CURRENCIES = CONSTANTS.CURRENCY_SYMBOLS
+
+
 class Utils:
     @classmethod
-    def parse_securities(cls, driver: WebDriver, notes: bool, current: bool) -> Dict[str, list]:
-        cls._wait_for_element(
-            driver=driver,
-            by='xpath',
-            value='//a[@data-testid="note-isin"]',
-            timeout=15,
-        )
+    def parse_investments(cls, investments: List[dict]) -> List[dict]:
+        new_items = []
 
-        investments = BeautifulSoup(driver.page_source, 'html.parser')
+        for idx, item in enumerate(investments):
+            new_items.append({})
 
-        isins = investments.select('a[data-testid=note-isin]')
+            for k, v in item.items():
+                if k == 'isin' or k == 'id':
+                    new_items[idx][k.upper()] = v
 
-        loan_types = investments.select('a[data-testid=note-isin] + div')
+                if isinstance(v, dict):
+                    if v.get('amount'):
+                        new_items[idx][cls.camel_to_snake(k)] = cls._str_to_float(v['amount'])
 
-        risk_scores = investments.select('div[class*="mintos-score-color"]')
+                        currency = v['currency']
 
-        # Risk score, loan portfolio performance, loan servicer efficiency, buyback strength, and cooperation structure
-        rs, lpp, lse, bs, cs = [], [], [], [], []
+                        if new_items[idx].get('currency') is None:
+                            new_items[idx]['currency'] = currency
 
-        # Sort all values in to their respective arrays
-        for i in range(0, len(risk_scores), 5):
-            rs.append(risk_scores[i])
-            lpp.append(risk_scores[i+1])
-            lse.append(risk_scores[i+2])
-            bs.append(risk_scores[i+3])
-            cs.append(risk_scores[i+4])
+                    if v.get('score'):
+                        n = {'score': cls._str_to_float(v['score'])}
 
-        if notes:
-            countries = investments.select('svg title')[:-4]
+                        n.update({cls.camel_to_snake(k): cls._str_to_float(v) for k, v in v['subscores'].items()})
 
-            parsed_countries = [
-                f'{countries[i].get_text()} ({countries[i + 1].get_text()})'
-                for i in range(0, len(countries), 2)
-            ]
-
-        else:
-            countries = investments.select('span:-soup-contains("Lending company") > div > img')
-
-            parsed_countries = [
-                f'{countries[i].get("title") or "N/A"} ({countries[i + 1].get("title") or "N/A"})'
-                for i in range(0, len(countries), 2)
-            ]
-
-        if notes:
-            lenders_selector = 'span[class="mw-u-o-hidden m-u-to-ellipsis mw-u-width-full"]'
-
-        else:
-            lenders_selector = 'div > img + span > div > span'
-
-        lenders = investments.select(lenders_selector)
-
-        interest_rates = investments.select('span:-soup-contains("Interest rate") + span')
-
-        purchase_dates = investments.select('span:-soup-contains("Purchase date") + span > div > span')
-
-        invested_amounts = investments.select('span:-soup-contains("Invested amount") + span > div > span')
-
-        received_payments = investments.select('span:-soup-contains("Received payments") + span > div > span')
-
-        pending_data = investments.select('span:-soup-contains("Pending Payments / In recovery") + div > span')
-
-        pending_payments, in_recovery = [
-            [pending_data[i] for i in range(0, len(pending_data), 2)],
-            [pending_data[i] for i in range(1, len(pending_data), 2)],
-        ]
-
-        parsed_securities = {
-            'ISIN': cls.extract_text(isins),
-            'Country': parsed_countries,
-            'Lending company': [lenders[i].get_text(strip=True) for i in range(0, len(lenders), 2)],
-            'Legal entity': [lenders[i].get_text(strip=True) for i in range(1, len(lenders), 2)],
-            'Mintos Risk Score': cls.extract_text(rs),
-            'Loan portfolio performance': cls.extract_text(lpp),
-            'Loan servicer efficiency': cls.extract_text(lse),
-            'Buyback strength': cls.extract_text(bs),
-            'Cooperation structure': cls.extract_text(cs),
-            'Interest rate': cls.extract_text(interest_rates),
-            'Invested amount': cls.extract_text(invested_amounts),
-            'Received payments': cls.extract_text(received_payments),
-        }
-
-        if current:
-            remaining_terms = investments.select('span:-soup-contains("Remaining term") + span')
-
-            principals = investments.select('span:-soup-contains("Outstanding Principal") + span > div > span')
-
-            payments = investments.select('span:-soup-contains("Next payment date / Next payment") + span > div > span')
-
-            parsed_payments = []
-
-            for val in payments:
-                if val.get_text(strip=True) == '—':
-                    parsed_payments.append('Late')
-
-                    parsed_payments.append('N/A')
+                        new_items[idx].update(n)
 
                     continue
 
-                parsed_payments.append(val)
+                new_items[idx][cls.camel_to_snake(k)] = v
 
-        else:
-            finished_dates = investments.select('span:-soup-contains("Finished") + span')
+        return new_items
 
-        return parsed_securities
+    @classmethod
+    def camel_to_snake(cls, __str: str) -> str:
+        assert isinstance(__str, str), 'You can only convert a string from camel case to snake case'
+
+        new_string = ''
+
+        for i, s in enumerate(__str):
+            if s.isupper() and i != 0:
+                new_string += f'_{s.lower()}'
+
+                continue
+
+            new_string += s
+
+        return new_string
 
     @classmethod
     def import_cookies(cls, driver: WebDriver, file_path: str) -> bool:
@@ -143,11 +89,6 @@ class Utils:
                 for cookie in cookies:
                     driver.add_cookie(cookie)
 
-                driver.refresh()
-
-                with open('cookies.pkl', 'wb') as w:
-                    pickle.dump(driver.get_cookies(), w)
-
                 return True
 
         except (FileNotFoundError, EOFError):
@@ -169,35 +110,89 @@ class Utils:
 
         return True
 
-    @staticmethod
-    def extract_text(elements: Union[ResultSet[Tag], List[any]]) -> List[str]:
-        return [element.get_text(strip=True) for element in elements]
+    @classmethod
+    def extract_text(cls, elements: List[any], *, return_type: str = 'float') -> list:
+        return_types = ['float', 'date', 'str']
+
+        if return_type not in return_types:
+            raise ValueError(f'Invalid return type, only {return_types} available.')
+
+        if return_type == 'float':
+            return list(map(lambda element: float(element.get_text(strip=True)), elements))
+
+        if return_type == 'date':
+            return list(map(lambda element: cls.str_to_date(element.get_text(strip=True)), elements))
+
+        return list(map(lambda element: element.get_text(strip=True), elements))
 
     @classmethod
-    def parse_currency_number(cls, __str: str) -> dict:
-        default_return = {
-            'amount': 'N/A',
-            'currency': 'N/A',
-        }
+    def extract_risk_score_text(cls, elements: List[any]) -> list:
+        scores = []
 
-        if not isinstance(__str, str):
-            return default_return
+        for element in elements:
+            text = element.get_text(strip=True)
+
+            try:
+                scores.append(float(text))
+
+            except ValueError:
+                scores.append(text)
+
+        return scores
+
+    @classmethod
+    def extract_currency_text(cls, elements: List[any], *, return_type: str = 'float') -> list:
+        currency_return_types = ['float', 'str']
+
+        if return_type not in currency_return_types:
+            raise ValueError(f'Invalid return type, only {currency_return_types} available for currency parsing.')
+
+        if return_type == 'float':
+            return list(map(lambda element: cls.parse_currency_number(element.get_text(strip=True)), elements))
+
+        else:
+            return list(
+                map(
+                    lambda element: cls.parse_currency_number(element.get_text(strip=True), return_type='currency'),
+                    elements,
+                )
+            )
+        
+    @classmethod
+    def extract_percentage_text(cls, elements: List[any], *, return_type: str = 'float') -> list:
+        percentage_return_types = ['float', 'str']
+        
+        if return_type not in percentage_return_types:
+            raise ValueError(
+                f'Invalid return type, only {percentage_return_types} available for percentage parsing.',
+            )
+        
+        if return_type == 'float':
+            return list(map(lambda element: element.get_text(strip=True).replace('%', ''), elements))
+
+        return list(map(lambda element: element.get_text(strip=True), elements))
+
+    @classmethod
+    def parse_currency_number(cls, __str: str, *, return_type: str = 'number') -> Union[float, str]:
+        return_types = ['currency', 'number']
+
+        if return_type not in return_types:
+            raise ValueError('Can only return currency or number from currency number.')
 
         __str = __str.strip()
 
         currency_sign = __str[0]
 
-        currency = CONSTANTS.CURRENCY_SYMBOLS.get(currency_sign)
+        currency = CURRENCIES.get(currency_sign)
 
-        if currency is None:
-            return default_return
+        if CURRENCIES is None:
+            raise ValueError(
+                f'Unknown currency symbol "{currency_sign}", these are the available currencies: {CURRENCIES}',
+            )
 
         amount = cls._str_to_float(__str.replace(currency_sign, '').strip())
 
-        return {
-            'amount': amount,
-            'currency': f'{currency} ({currency_sign})',
-        }
+        return amount if return_type == 'number' else f'{currency} ({currency_sign})'
 
     @classmethod
     def get_svg_title(cls, svg: WebElement) -> str:

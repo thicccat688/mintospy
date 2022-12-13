@@ -16,10 +16,12 @@ from datetime import datetime
 from bs4 import BeautifulSoup
 import pandas as pd
 import warnings
+import requests
 import pickle
 import pyotp
-import math
 import time
+import json
+import ast
 import os
 
 
@@ -60,6 +62,8 @@ class API:
         # Automatically authenticate to Mintos API upon API object initialization
         self.login()
 
+        self.__csrf_token = self._get_csrf_token()
+
     def get_portfolio_data(self, currency: str) -> dict:
         """
         :param currency: Currency of portfolio to get data from (EUR, KZT, PLN, etc.)
@@ -71,7 +75,6 @@ class API:
         data = self._make_request(
             url=f'{ENDPOINTS.API_PORTFOLIO_URI}',
             params={'currencyIsoCode': currency_iso_code},
-            api=True,
         )
 
         return {k: float(v) for (k, v) in data.items()}
@@ -87,7 +90,6 @@ class API:
         data = self._make_request(
             url=ENDPOINTS.API_OVERVIEW_NAR_URI,
             params={'currencyIsoCode': currency_iso_code},
-            api=True,
         )
 
         # Parse dictionary data to correct data type and simpler format
@@ -102,10 +104,7 @@ class API:
         :return: Currencies currently accepted on Mintos' marketplace
         """
 
-        data = self._make_request(
-            url=ENDPOINTS.API_CURRENCIES_URI,
-            api=True,
-        )
+        data = self._make_request(url=ENDPOINTS.API_CURRENCIES_URI)
 
         return data.get('items')
 
@@ -114,10 +113,7 @@ class API:
         :return: Lending companies currently listing loans on Mintos' marketplace
         """
 
-        data = self._make_request(
-            url=ENDPOINTS.API_LENDING_COMPANIES_URI,
-            api=True,
-        )
+        data = self._make_request(url=ENDPOINTS.API_LENDING_COMPANIES_URI)
 
         return data
 
@@ -125,9 +121,9 @@ class API:
             self,
             currency: str,
             quantity: int = 30,
-            page: int = 1,
+            start_page: int = 1,
             notes: bool = True,
-            sort: str = 'interestRate',
+            sort_field: str = 'invested_amount',
             countries: List[str] = None,
             pending_payments: bool = None,
             amortization_methods: List[str] = None,
@@ -140,7 +136,8 @@ class API:
             max_interest_rate: float = None,
             min_interest_rate: float = None,
             loan_types: List[str] = None,
-            risk_scores: List[int] = None,
+            max_risk_score: float = None,
+            min_risk_score: float = None,
             strategies: List[str] = None,
             max_term: int = None,
             min_term: int = None,
@@ -152,12 +149,13 @@ class API:
             raw: bool = False,
     ) -> Union[pd.DataFrame, List[dict]]:
         """
-        :param currency: Currency that notes are denominated in
-        :param quantity: Quantity of notes to get
-        :param page: Page to get Notes from (Gets from first page by default)
+        :param currency: Currency that investments are denominated in
+        :param quantity: Quantity of investments to get
+        :param start_page: Page to start getting investments from (Gets from first page by default)
         :param notes: Specify whether to get Notes or Claims (True -> Gets notes; False -> Gets claims)
-        :param sort: What to sort Notes by
-        :param countries: What countries notes should be issued in
+        :param sort_field: Field to sort by (isin, mintosRiskScoreDecimal, lender, interestRate, maturityDate,
+        createdAt, initialAmount, amount)
+        :param countries: What countries notes should be issued from
         :param pending_payments: If payments for notes should be pending or not
         :param amortization_methods: Amortization type of notes (Full, partial, interest-only, or bullet)
         :param claim_id: ID of claim to filter by
@@ -170,7 +168,8 @@ class API:
         :param min_interest_rate: Only return notes up to this minimum interest rate
         :param loan_types: Only return notes composed of certain loan types
         (agricultural, business, car, invoice_financing, mortgage, pawnbroking, personal, short_term)
-        :param risk_scores: Only returns notes of a certain risk score (1-10 or "SW" for notes with suspended rating)
+        :param max_risk_score: Only returns notes below this risk score (1-10 or "SW" for notes with suspended rating)
+        :param min_risk_score: Only returns notes above this risk score (1-10 or "SW" for notes with suspended rating)
         :param strategies: Only return notes that were invested in with certain strategies
         :param max_term: Only return notes up to a maximum term
         :param min_term: Only return notes up to a minimum term
@@ -180,222 +179,219 @@ class API:
         :param include_manual_investments: Include notes that were purchased manually, instead of by auto invest
         :param ascending_sort: Sort notes in ascending order based on "sort" argument if True, otherwise sort descending
         :param raw: Return raw notes JSON if set to True, or returns pandas dataframe of notes if set to False
-        :return: Pandas DataFrame or raw JSON of notes (Chosen in the "raw" argument)
+        :return: Pandas DataFrame or raw JSON of notes (Chosen in the "raw" argument), extra data, and pagination data
         """
 
         currency_iso_code = CONSTANTS.get_currency_iso(currency)
 
-        investment_params = [
-            ('currencies[]', currency_iso_code),
-            ('sort_order', 'ASC' if ascending_sort else 'DESC'),
-            ('max_results', 300),
-            ('page', page),
-        ]
-
         if notes:
-            url = f'{ENDPOINTS.INVESTMENTS_URI}/{"current" if current else "finished"}'
+            if sort_field not in CONSTANTS.NOTES_SORT_FIELDS:
+                raise ValueError(f'{sort_field} not in notes sort fields: {", ".join(CONSTANTS.NOTES_SORT_FIELDS)}.')
 
         else:
-            url = f'{ENDPOINTS.CLAIMS_URI}/{"current-investments" if current else "finished-investments"}'
+            if sort_field not in CONSTANTS.CLAIMS_SORT_FIELDS:
+                raise ValueError(f'{sort_field} not in claims sort fields: {", ".join(CONSTANTS.CLAIMS_SORT_FIELDS)}.')
 
-        if page < 1:
-            raise ValueError('Page must be superior or equal to 1.')
+        investment_params = {'currency': currency_iso_code}
+
+        if notes:
+            extra_data = {
+                'pagination': {
+                    'maxResults': CONSTANTS.MAX_RESULTS,
+                    'page': start_page,
+                },
+                'sorting': {
+                    'sortField': sort_field,
+                    'sortOrder': 'ASC' if ascending_sort else 'DESC',
+                },
+            }
+
+            investment_params.update(extra_data)
+
+        else:
+            extra_data = {
+                'max_results': CONSTANTS.MAX_RESULTS,
+                'sort_field': sort_field,
+                'sort_order': 'ASC' if ascending_sort else 'DESC',
+                'format': 'json',
+            }
+
+            investment_params.update(extra_data)
+
+        if notes:
+            url = f'{ENDPOINTS.API_INVESTMENTS_URI}/{"current" if current else "finished"}'
+
+        else:
+            url = ENDPOINTS.API_CLAIMS_URI
+
+            investment_params['status'] = 1 if current else 0
+
+        if start_page < 1:
+            raise ValueError('Start page must be superior or equal to 1.')
 
         if isin and claim_id:
             raise ValueError('You can only filter by ISIN or a Claim ID.')
 
         if isinstance(countries, list):
-            for country in countries:
-                new_country = ('countries[]', CONSTANTS.get_country_iso(country))
+            investment_params['countries'] = []
 
-                investment_params.append(new_country)
+            for country in countries:
+                investment_params['countries'].append(CONSTANTS.get_country_iso(country))
+
+        if isinstance(lending_companies, list):
+            investment_params['lenderGroups'] = []
 
             for lender in lending_companies:
-                new_lender = ('lender_groups[]', CONSTANTS.get_lending_company_id(lender))
-
-                investment_params.append(new_lender)
+                investment_params['lenderGroups'].append(CONSTANTS.get_lending_company_id(lender))
 
         if isinstance(loan_types, list):
+            investment_params['pledges'] = []
+
             for type_ in loan_types:
                 if type_ not in CONSTANTS.LOAN_TYPES:
                     raise ValueError(f'Loan type must be one of the following: {", ".join(CONSTANTS.LOAN_TYPES)}')
 
-                new_type = ('pledges[]', type_)
-
-                investment_params.append(new_type)
+                investment_params['pledges'].append(type_)
 
         if isinstance(amortization_methods, list):
+            investment_params['scheduleTypes'] = []
+
             for method in amortization_methods:
-                new_method = ('schedule_types[]', CONSTANTS.get_amoritzation_method_id(method))
+                investment_params['schedule_types'].append(CONSTANTS.get_amoritzation_method_id(method))
 
-                investment_params.append(new_method)
+        if isinstance(max_risk_score, (float, int)):
+            if 1 > max_risk_score > 10:
+                raise ValueError(
+                    'Maximum risk score needs to be a number in between 1-10.',
+                )
 
-        if isinstance(risk_scores, list):
-            for score in risk_scores:
-                if not isinstance(score, int) or score == 'SW':
-                    raise ValueError(
-                        'Risk score needs to be an integer between 1-10 or "SW" (When risk score is suspended).',
-                    )
+            investment_params['maxLendingCompanyRiskScore'] = max_risk_score
 
-                if 1 > score > 10:
-                    raise ValueError(
-                        'Risk score can only be a number in between 1-10 or "SW" (When risk score is suspended).',
-                    )
+        if isinstance(min_risk_score, (float, int)):
+            if 1 > min_risk_score > 10:
+                raise ValueError(
+                    'Minimum risk score needs to be a number in between 1-10.',
+                )
 
-                new_score = ('mintos_scores[]', score)
-
-                investment_params.append(new_score)
+            investment_params['minLendingCompanyRiskScore'] = min_risk_score
 
         if isinstance(isin, str):
             if len(isin) != 12:
                 raise ValueError('ISIN must be 12 characters long.')
 
-            new_isin = ('isin', isin)
-
-            investment_params.append(new_isin)
+            investment_params['isin'] = isin
 
         if isinstance(late_loan_exposure, list):
+            investment_params['lateLoanExposures'] = []
+
             for exposure in late_loan_exposure:
                 if exposure not in CONSTANTS.LATE_LOAN_EXPOSURES:
                     raise ValueError(
                         f'Late loan exposure must be one of the following: {", ".join(CONSTANTS.LATE_LOAN_EXPOSURES)}',
                     )
 
-                new_exposure = ('late_loan_exposure[]', exposure)
-
-                investment_params.append(new_exposure)
+                investment_params['lateLoanExposures'].append(late_loan_exposure)
 
         if isinstance(pending_payments, bool):
-            new_pending_status = ('pending_payments_status[]', 1 if pending_payments else 0)
+            if notes:
+                investment_params['pending_payments_status'] = 1 if pending_payments else 0
 
-            investment_params.append(new_pending_status)
+            else:
+                investment_params['hasPendingPayments'] = pending_payments
 
         if isinstance(listed_for_sale, bool):
-            new_sale_status = ('listed[]', 1 if listed_for_sale else 0)
+            if notes:
+                investment_params['listed_for_sale_status'] = 1 if listed_for_sale else 0
 
-            investment_params.append(new_sale_status)
+            else:
+                investment_params['listedForSale'] = listed_for_sale
 
         if isinstance(lender_statuses, list):
+            investment_params['lenderStatuses'] = []
+
             for status in lender_statuses:
                 if status not in CONSTANTS.LENDING_COMPANY_STATUSES:
                     raise ValueError(
                         f'Lender status must be one of the following: {", ".join(CONSTANTS.LENDING_COMPANY_STATUSES)}',
                     )
 
-                new_company_status = ('company_status[]', status)
-
-                investment_params.append(new_company_status)
-
-        if isinstance(sort, str):
-            new_sort = ('sort_field', sort)
-
-            investment_params.append(new_sort)
+                investment_params['lenderStatuses'].append(status)
 
         if isinstance(include_manual_investments, bool):
-            new_include_manual_investements = ('include_manual_investments', include_manual_investments)
+            if notes:
+                investment_params['includeManualInvestments'] = include_manual_investments
 
-            investment_params.append(new_include_manual_investements)
+            else:
+                investment_params['include_manual_investments'] = 1 if include_manual_investments else 0
 
         if isinstance(max_interest_rate, float):
-            new_max_interest_rate = ('max_interest', max_interest_rate)
+            investment_params['maxInterestRate'] = max_interest_rate
 
-            investment_params.append(new_max_interest_rate)
+        if isinstance(min_interest_rate, float):
+            investment_params['minInterestRate'] = min_interest_rate
 
         if isinstance(max_term, float):
-            new_max_term = ('max_term', max_term)
-
-            investment_params.append(new_max_term)
-
-        if isinstance(min_interest_rate, int):
-            new_min_interest_rate = ('min_interest', min_interest_rate)
-
-            investment_params.append(new_min_interest_rate)
+            investment_params['termTo'] = max_term
 
         if isinstance(min_term, int):
-            new_min_term = ('min_term', min_term)
-
-            investment_params.append(new_min_term)
+            investment_params['termFrom'] = min_term
 
         if isinstance(max_purchased_date, datetime):
-            new_max_purchased_date = ('date_to', max_purchased_date.strftime('%d.%m.%Y'))
-
-            investment_params.append(new_max_purchased_date)
+            investment_params['investmentDateTo'] = max_purchased_date.strftime('%d.%m.%Y')
 
         if isinstance(min_purchased_date, datetime):
-            new_min_purchased_date = ('date_from', min_purchased_date.strftime('%d.%m.%Y'))
+            investment_params['investmentDateFrom'] = min_purchased_date.strftime('%d.%m.%Y')
 
-            investment_params.append(new_min_purchased_date)
+        request_headers = {}
 
-        self._make_request(
+        if not notes:
+            request_headers['content-type'] = 'application/x-www-form-urlencoded'
+
+        total_retrieved = 0
+
+        response = self._make_request(
             url=url,
-            params=investment_params,
+            method='POST',
+            headers=request_headers,
+            data=investment_params,
         )
 
-        if notes:
-            ixpath = '//h4[contains(text(), "Sets of Notes") and string-length(normalize-space())>14]'
+        total_retrieved += CONSTANTS.MAX_RESULTS
 
-        else:
-            ixpath = '//span[contains(text(), "selected entries") and string-length(normalize-space())]'
+        responses = [response]
 
-        try:
-            total_investments = self._wait_for_element(
-                tag='xpath',
-                locator=ixpath,
-                timeout=15,
-            )
-
-        except TimeoutException:
-            raise MintosException(f'No {"Notes" if notes else "Claims"} with your criteria available.')
-
-        if notes:
-            total_investments = int(total_investments.text.split(' Sets')[0].strip())
-
-        else:
-            total_investments = int(total_investments.text.split('of ')[1].split(' selected')[0].strip())
-
-        if quantity > total_investments:
-            warnings.warn(
-                f'Getting you available investments (Only {total_investments} available).'
-            )
-
-        total_pages = math.ceil(total_investments / 300)
-        recalls = math.ceil(quantity / 300)
-
-        parsed_list = []
-
-        for i in range(recalls):
-            if i > total_pages:
+        while total_retrieved < quantity:
+            if not response['pagination']['hasNextPage']:
                 break
 
-            if i > 0:
-                self._make_request(
-                    url=url,
-                    params=investment_params,
-                )
+            investment_params['pagination']['page'] += 1
 
-            parsed_securities = Utils.parse_securities(driver=self.__driver, notes=notes, current=current)
+            next_response = self._make_request(
+                url=url,
+                method='POST',
+                headers=request_headers,
+                data=investment_params,
+            )
 
-            parsed_list.append(parsed_securities)
+            responses.append(next_response)
 
-        merged_data = {}
+            total_retrieved += 300
 
-        for o in parsed_list:
-            for k in o:
-                v = merged_data.get(k)
+        items = []
 
-                if v:
-                    merged_data[k] += o[k]
+        for resp in responses:
+            if notes:
+                items.extend(resp['items'])
 
-                else:
-                    merged_data[k] = o[k]
+            else:
+                items.extend(resp['data'])
 
-        print(merged_data)
+        if raw or len(items) == 0:
+            return items
 
-        securities_df = pd.DataFrame(merged_data)
+        row_index = 'ISIN' if notes else 'id'
 
-        securities_df.set_index(keys=['isin'])
-
-        return securities_df
+        return pd.DataFrame.from_records(Utils.parse_investments(items)).set_index(row_index).fillna('N/A')
 
     def get_loans(self, raw: bool = False) -> List[dict]:
         pass
@@ -416,11 +412,17 @@ class API:
 
             return
 
-        self._wait_for_element(
-            tag='id',
-            locator='login-username',
-            timeout=5,
-        ).send_keys(self.email)
+        try:
+            self._wait_for_element(
+                tag='id',
+                locator='login-username',
+                timeout=5,
+            ).send_keys(self.email)
+
+        except TimeoutException:
+            self.__driver.find_element(by='css selector', value='h1[data-testid="page-title"]')
+
+            raise MintosException("Mintos' system is currently being updated. Try again later.")
 
         self.__driver.find_element(by='id', value='login-password').send_keys(self.__password)
 
@@ -493,8 +495,9 @@ class API:
         with open('cookies.pkl', 'wb') as f:
             pickle.dump(self.__driver.get_cookies(), f)
 
-    def logout(self) -> None:
-        self._make_request(url=ENDPOINTS.API_LOGOUT_URI)
+    def quit(self) -> None:
+        with open('cookies.pkl', 'wb') as f:
+            pickle.dump(self.__driver.get_cookies(), f)
 
         self.__driver.quit()
 
@@ -508,25 +511,43 @@ class API:
     def _make_request(
             self,
             url: str,
+            method: str = 'GET',
+            headers: dict = None,
             params: Union[dict, List[tuple]] = None,
-            api: bool = False,
-    ) -> any:
+            data: dict = None,
+    ):
         """
-        Request handler with built-in exception handling for Mintos' API
+        Request handler that makes fetch requests directly in the webdriver's console
         :param url: URL of endpoint to call
+        :param method: Request method to use (POST, GET, PUT, DELETE)
+        :param headers: Headers to send in the HTTP request
         :param params: Query parameters to send in HTTP request (Send as list of tuples for duplicate query strings)
-        :param api: Specify if request is made directly to Mintos' API or via front-end
         :return: HTML response from HTTP request
         """
 
-        url = Utils.mount_url(url=url, params=params)
+        url = Utils.mount_url(url, params)
 
-        self.__driver.get(url)
+        request_headers = {'anti-csrf-token': self.__csrf_token, 'content-type': 'application/json'}
 
-        if api:
-            return Utils.parse_api_response(self.__driver.page_source)
+        if isinstance(headers, dict):
+            request_headers.update(headers)
 
-        return BeautifulSoup(self.__driver.page_source, 'html.parser')
+        fetch_parameters = {
+            'method': method,
+            'credentials': 'include',
+            'headers': ast.literal_eval(json.dumps(request_headers)),
+        }
+
+        if isinstance(data, dict):
+            fetch_parameters.update({'body': json.dumps(data)})
+
+        fetch_script = f'''
+        var response = await fetch("{url}", {json.dumps(fetch_parameters)})
+
+        return await response.json()
+        '''
+
+        return self.__driver.execute_script(fetch_script)
 
     def _wait_for_element(
             self,
@@ -553,6 +574,24 @@ class API:
 
         return self.__driver.find_element(by=tag, value=locator)
 
+    def _get_csrf_token(self) -> str:
+        s = requests.Session()
+
+        for cookie in self.__driver.get_cookies():
+            s.cookies.set(cookie['name'], cookie['value'])
+
+        content = s.get(ENDPOINTS.WEB_APP_URI).text
+
+        parsed_content = BeautifulSoup(content, 'lxml')
+
+        # Extract CSRF token
+        csrf_token = parsed_content.select('meta[data-hid="csrf-token"]')[0]['content']
+
+        if not isinstance(csrf_token, str):
+            raise ValueError('Failed to extract CSRF token.')
+
+        return csrf_token
+
     def _js_click(self, element: WebElement) -> None:
         """
         :param element: Web element to perform click on via JavaScript
@@ -562,7 +601,8 @@ class API:
 
     @staticmethod
     def _create_driver() -> WebDriver:
-        options, service = webdriver.ChromeOptions(), Service(ChromeDriverManager().install())
+        options = webdriver.ChromeOptions()
+        service = Service(ChromeDriverManager().install())
 
         options.add_experimental_option('detach', True)
 
@@ -574,6 +614,8 @@ class API:
 
         options.add_argument('--no-sandbox')
         options.add_argument("--disable-extensions")
+
+        options.set_capability('goog:loggingPrefs', {'performance': 'ALL'})
 
         return webdriver.Chrome(options=options, service=service)
 
@@ -605,8 +647,17 @@ if __name__ == '__main__':
 
     t1 = time.time()
 
-    print(mintos_api.get_investments(currency='EUR', quantity=200, notes=True, current=True))
+    investments = mintos_api.get_investments(
+        currency='KZT',
+        quantity=200,
+        notes=False,
+        current=True,
+        max_risk_score=10,
+        min_risk_score=0,
+    )
+
+    print(investments)
 
     print('investments fetching duration --->', time.time() - t1)
 
-    mintos_api.logout()
+    mintos_api.quit()
