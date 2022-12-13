@@ -26,8 +26,8 @@ class Utils:
             new_items.append({})
 
             for k, v in item.items():
-                if k == 'isin':
-                    new_items[idx]['ISIN'] = v
+                if k == 'isin' or k == 'id':
+                    new_items[idx][k.upper()] = v
 
                 if isinstance(v, dict):
                     if v.get('amount'):
@@ -88,8 +88,6 @@ class Utils:
 
                 for cookie in cookies:
                     driver.add_cookie(cookie)
-
-                driver.refresh()
 
                 return True
 

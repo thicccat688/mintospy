@@ -1,3 +1,4 @@
+from mintospy.exceptions import MintosException
 from mintospy.constants import CONSTANTS
 from mintospy.endpoints import ENDPOINTS
 from mintospy.utils import Utils
@@ -15,10 +16,12 @@ from datetime import datetime
 from bs4 import BeautifulSoup
 import pandas as pd
 import warnings
+import requests
 import pickle
 import pyotp
 import time
 import json
+import ast
 import os
 
 
@@ -59,17 +62,7 @@ class API:
         # Automatically authenticate to Mintos API upon API object initialization
         self.login()
 
-        # Extract CSRF token
-        self.__csrf_token = self._wait_for_element(
-            tag='css selector',
-            locator='meta[data-hid="csrf-token"]',
-            timeout=10,
-        )
-
-        print(self.__csrf_token)
-
-        if isinstance(self.__csrf_token, str):
-            raise ValueError('Failed to extract CSRF token.')
+        self.__csrf_token = self._get_csrf_token()
 
     def get_portfolio_data(self, currency: str) -> dict:
         """
@@ -82,7 +75,6 @@ class API:
         data = self._make_request(
             url=f'{ENDPOINTS.API_PORTFOLIO_URI}',
             params={'currencyIsoCode': currency_iso_code},
-            api=True,
         )
 
         return {k: float(v) for (k, v) in data.items()}
@@ -98,7 +90,6 @@ class API:
         data = self._make_request(
             url=ENDPOINTS.API_OVERVIEW_NAR_URI,
             params={'currencyIsoCode': currency_iso_code},
-            api=True,
         )
 
         # Parse dictionary data to correct data type and simpler format
@@ -113,10 +104,7 @@ class API:
         :return: Currencies currently accepted on Mintos' marketplace
         """
 
-        data = self._make_request(
-            url=ENDPOINTS.API_CURRENCIES_URI,
-            api=True,
-        )
+        data = self._make_request(url=ENDPOINTS.API_CURRENCIES_URI)
 
         return data.get('items')
 
@@ -125,10 +113,7 @@ class API:
         :return: Lending companies currently listing loans on Mintos' marketplace
         """
 
-        data = self._make_request(
-            url=ENDPOINTS.API_LENDING_COMPANIES_URI,
-            api=True,
-        )
+        data = self._make_request(url=ENDPOINTS.API_LENDING_COMPANIES_URI)
 
         return data
 
@@ -199,19 +184,39 @@ class API:
 
         currency_iso_code = CONSTANTS.get_currency_iso(currency)
 
-        max_results = 300
+        if notes:
+            if sort_field not in CONSTANTS.NOTES_SORT_FIELDS:
+                raise ValueError(f'{sort_field} not in notes sort fields: {", ".join(CONSTANTS.NOTES_SORT_FIELDS)}.')
 
-        investment_params = {
-            'currency': currency_iso_code,
-            'pagination': {
-                'maxResults': max_results,
-                'page': start_page,
-            },
-            'sorting': {
-                'sortField': sort_field,
-                'sortOrder': 'ASC' if ascending_sort else 'DESC',
-            },
-        }
+        else:
+            if sort_field not in CONSTANTS.CLAIMS_SORT_FIELDS:
+                raise ValueError(f'{sort_field} not in claims sort fields: {", ".join(CONSTANTS.CLAIMS_SORT_FIELDS)}.')
+
+        investment_params = {'currency': currency_iso_code}
+
+        if notes:
+            extra_data = {
+                'pagination': {
+                    'maxResults': CONSTANTS.MAX_RESULTS,
+                    'page': start_page,
+                },
+                'sorting': {
+                    'sortField': sort_field,
+                    'sortOrder': 'ASC' if ascending_sort else 'DESC',
+                },
+            }
+
+            investment_params.update(extra_data)
+
+        else:
+            extra_data = {
+                'max_results': CONSTANTS.MAX_RESULTS,
+                'sort_field': CONSTANTS.CLAIMS_PARAMS[sort_field],
+                'sort_order': 'ASC' if ascending_sort else 'DESC',
+                'format': 'json',
+            }
+
+            investment_params.update(extra_data)
 
         if notes:
             url = f'{ENDPOINTS.API_INVESTMENTS_URI}/{"current" if current else "finished"}'
@@ -254,16 +259,16 @@ class API:
             for method in amortization_methods:
                 investment_params['schedule_types'].append(CONSTANTS.get_amoritzation_method_id(method))
 
-        if isinstance(max_risk_score, float):
-            if 1 < max_risk_score < 10:
+        if isinstance(max_risk_score, (float, int)):
+            if 1 > max_risk_score > 10:
                 raise ValueError(
                     'Maximum risk score needs to be a number in between 1-10.',
                 )
 
             investment_params['maxLendingCompanyRiskScore'] = max_risk_score
 
-        if isinstance(min_risk_score, float):
-            if 1 < min_risk_score < 10:
+        if isinstance(min_risk_score, (float, int)):
+            if 1 > min_risk_score > 10:
                 raise ValueError(
                     'Minimum risk score needs to be a number in between 1-10.',
                 )
@@ -322,7 +327,7 @@ class API:
         if isinstance(max_interest_rate, float):
             investment_params['maxInterestRate'] = max_interest_rate
 
-        if isinstance(min_interest_rate, int):
+        if isinstance(min_interest_rate, float):
             investment_params['minInterestRate'] = min_interest_rate
 
         if isinstance(max_term, float):
@@ -337,20 +342,21 @@ class API:
         if isinstance(min_purchased_date, datetime):
             investment_params['investmentDateFrom'] = min_purchased_date.strftime('%d.%m.%Y')
 
+        request_headers = {}
+
+        if not notes:
+            request_headers['content-type'] = 'application/x-www-form-urlencoded'
+
         total_retrieved = 0
 
-        request_headers = {
-            'content-type': 'application/json',
-            'anti-csrf-token': self.__csrf_token,
-        }
-
-        response = self._make_fetch(
+        response = self._make_request(
             url=url,
+            method='POST',
             headers=request_headers,
             data=investment_params,
         )
 
-        total_retrieved += max_results
+        total_retrieved += CONSTANTS.MAX_RESULTS
 
         responses = [response]
 
@@ -360,8 +366,9 @@ class API:
 
             investment_params['pagination']['page'] += 1
 
-            next_response = self._make_fetch(
+            next_response = self._make_request(
                 url=url,
+                method='POST',
                 headers=request_headers,
                 data=investment_params,
             )
@@ -373,8 +380,6 @@ class API:
         items = []
 
         for resp in responses:
-            print(resp)
-
             if notes:
                 items.extend(resp['items'])
 
@@ -407,11 +412,17 @@ class API:
 
             return
 
-        self._wait_for_element(
-            tag='id',
-            locator='login-username',
-            timeout=5,
-        ).send_keys(self.email)
+        try:
+            self._wait_for_element(
+                tag='id',
+                locator='login-username',
+                timeout=5,
+            ).send_keys(self.email)
+
+        except TimeoutException:
+            self.__driver.find_element(by='css selector', value='h1[data-testid="page-title"]')
+
+            raise MintosException("Mintos' system is currently being updated. Try again later.")
 
         self.__driver.find_element(by='id', value='login-password').send_keys(self.__password)
 
@@ -497,9 +508,10 @@ class API:
 
         return pyotp.TOTP(self.__tfa_secret).now()
 
-    def _make_fetch(
+    def _make_request(
             self,
             url: str,
+            method: str = 'GET',
             headers: dict = None,
             params: Union[dict, List[tuple]] = None,
             data: dict = None,
@@ -507,6 +519,7 @@ class API:
         """
         Request handler that makes fetch requests directly in the webdriver's console
         :param url: URL of endpoint to call
+        :param method: Request method to use (POST, GET, PUT, DELETE)
         :param headers: Headers to send in the HTTP request
         :param params: Query parameters to send in HTTP request (Send as list of tuples for duplicate query strings)
         :return: HTML response from HTTP request
@@ -514,41 +527,27 @@ class API:
 
         url = Utils.mount_url(url, params)
 
-        fetch_script = f'''
-        var response = await fetch("{url}", {{
-            'method': 'POST',
+        request_headers = {'anti-csrf-token': self.__csrf_token, 'content-type': 'application/json'}
+
+        if isinstance(headers, dict):
+            request_headers.update(headers)
+
+        fetch_parameters = {
+            'method': method,
             'credentials': 'include',
-            'headers': {json.dumps(headers)},
-            'body': JSON.stringify({json.dumps(data)}),
-        }})
-        
+            'headers': ast.literal_eval(json.dumps(request_headers)),
+        }
+
+        if isinstance(data, dict):
+            fetch_parameters.update({'body': json.dumps(data)})
+
+        fetch_script = f'''
+        var response = await fetch("{url}", {json.dumps(fetch_parameters)})
+
         return await response.json()
         '''
 
         return self.__driver.execute_script(fetch_script)
-
-    def _make_request(
-            self,
-            url: str,
-            params: Union[dict, List[tuple]] = None,
-            api: bool = False,
-    ) -> any:
-        """
-        Request handler with built-in exception handling for Mintos' API
-        :param url: URL of endpoint to call
-        :param params: Query parameters to send in HTTP request (Send as list of tuples for duplicate query strings)
-        :param api: Specify if request is made directly to Mintos' API or via front-end
-        :return: HTML response from HTTP request
-        """
-
-        url = Utils.mount_url(url, params)
-
-        self.__driver.get(url)
-
-        if api:
-            return Utils.parse_api_response(self.__driver.page_source)
-
-        return BeautifulSoup(self.__driver.page_source, 'html.parser')
 
     def _wait_for_element(
             self,
@@ -574,6 +573,24 @@ class API:
             return self.__driver.find_elements(by=tag, value=locator)
 
         return self.__driver.find_element(by=tag, value=locator)
+
+    def _get_csrf_token(self) -> str:
+        s = requests.Session()
+
+        for cookie in self.__driver.get_cookies():
+            s.cookies.set(cookie['name'], cookie['value'])
+
+        content = s.get(ENDPOINTS.WEB_APP_URI).text
+
+        parsed_content = BeautifulSoup(content, 'lxml')
+
+        # Extract CSRF token
+        csrf_token = parsed_content.select('meta[data-hid="csrf-token"]')[0]['content']
+
+        if not isinstance(csrf_token, str):
+            raise ValueError('Failed to extract CSRF token.')
+
+        return csrf_token
 
     def _js_click(self, element: WebElement) -> None:
         """
@@ -620,17 +637,24 @@ if __name__ == '__main__':
 
     print(time.time() - t1)
 
-    # print(mintos_api.get_portfolio_data(currency='EUR'))
+    print(mintos_api.get_portfolio_data(currency='EUR'))
 
-    # print(mintos_api.get_net_annual_return(currency='EUR'))
+    print(mintos_api.get_net_annual_return(currency='EUR'))
 
-    # print(mintos_api.get_lending_companies())
+    print(mintos_api.get_lending_companies())
 
-    # print(mintos_api.get_currencies())
+    print(mintos_api.get_currencies())
 
     t1 = time.time()
 
-    investments = mintos_api.get_investments(currency='KZT', quantity=200, notes=False, current=True)
+    investments = mintos_api.get_investments(
+        currency='KZT',
+        quantity=200,
+        notes=False,
+        current=True,
+        max_risk_score=10,
+        min_risk_score=0,
+    )
 
     print(investments)
 
