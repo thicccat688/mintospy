@@ -211,7 +211,7 @@ class API:
         else:
             extra_data = {
                 'max_results': CONSTANTS.MAX_RESULTS,
-                'sort_field': CONSTANTS.CLAIMS_PARAMS[sort_field],
+                'sort_field': sort_field,
                 'sort_order': 'ASC' if ascending_sort else 'DESC',
                 'format': 'json',
             }
