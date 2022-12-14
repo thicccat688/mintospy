@@ -64,59 +64,6 @@ class API:
 
         self.__csrf_token = self._get_csrf_token()
 
-    def get_portfolio_data(self, currency: str) -> dict:
-        """
-        :param currency: Currency of portfolio to get data from (EUR, KZT, PLN, etc.)
-        :return: Active loans, late loans, and loans in recovery/default
-        """
-
-        currency_iso_code = CONSTANTS.get_currency_iso(currency)
-
-        data = self._make_request(
-            url=f'{ENDPOINTS.API_PORTFOLIO_URI}',
-            params={'currencyIsoCode': currency_iso_code},
-        )
-
-        return {k: float(v) for (k, v) in data.items()}
-
-    def get_net_annual_return(self, currency: str) -> dict:
-        """
-        :param currency: Currency of portfolio to get net annual return from (EUR, KZT, PLN, etc.)
-        :return: Currency ISO code, net annual return with and without campaign bonuses
-        """
-
-        currency_iso_code = CONSTANTS.get_currency_iso(currency)
-
-        data = self._make_request(
-            url=ENDPOINTS.API_OVERVIEW_NAR_URI,
-            params={'currencyIsoCode': currency_iso_code},
-        )
-
-        # Parse dictionary data to correct data type and simpler format
-        for k in data.copy():
-            if isinstance(data[k], dict):
-                data[k] = float(data[k][str(currency_iso_code)])  # type: ignore
-
-        return Utils.parse_mintos_items(data)
-
-    def get_currencies(self) -> any:
-        """
-        :return: Currencies currently accepted on Mintos' marketplace
-        """
-
-        data = self._make_request(url=ENDPOINTS.API_CURRENCIES_URI)
-
-        return data.get('items')
-
-    def get_lending_companies(self) -> List[dict]:
-        """
-        :return: Lending companies currently listing loans on Mintos' marketplace
-        """
-
-        data = self._make_request(url=ENDPOINTS.API_LENDING_COMPANIES_URI)
-
-        return data
-
     def get_investments(
             self,
             currency: str,
@@ -414,6 +361,17 @@ class API:
 
         return pd.DataFrame.from_records(Utils.parse_investments(items)).set_index(row_index).fillna('N/A')
 
+    def get_investment_filters(self, current: bool = False) -> dict:
+        """
+        :param current: Set to True to get filters for current investments, else set to False
+        :return: Investment filters provided by Mintos
+        """
+
+        return self._make_request(
+            url=ENDPOINTS.API_FILTER_URI,
+            params={'status': 0 if current else 1},
+        )
+
     def get_loans(self, raw: bool = False) -> List[dict]:
         pass
 
@@ -572,8 +530,6 @@ class API:
         return await response.json()
         '''
 
-        print(fetch_script)
-
         return self.__driver.execute_script(fetch_script)
 
     def _wait_for_element(
@@ -662,25 +618,17 @@ if __name__ == '__main__':
 
     print(time.time() - t1)
 
-    # print(mintos_api.get_portfolio_data(currency='EUR'))
-
-    # print(mintos_api.get_net_annual_return(currency='EUR'))
-
-    # print(mintos_api.get_lending_companies())
-
-    # print(mintos_api.get_currencies())
-
-    t1 = time.time()
+    t2 = time.time()
 
     investments = mintos_api.get_investments(
         currency='EUR',
-        quantity=1000,
-        notes=False,
+        quantity=1300,
+        notes=True,
         current=False,
     )
 
     print(investments)
 
-    print('investments fetching duration --->', time.time() - t1)
+    print('investments fetching duration --->', time.time() - t2)
 
     mintos_api.quit()

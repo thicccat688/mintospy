@@ -7,13 +7,7 @@ class ENDPOINTS:
 
     API_TFA_URI = f'{BASE_URI}/en/webapp-api/user/login/otp'
 
-    API_OVERVIEW_NAR_URI = f'{BASE_URI}/en/webapp-api/user/overview-net-annual-returns'
-
-    API_PORTFOLIO_URI = f'{BASE_URI}/marketplace-api/v1/note-series/overview/portfolio-data'
-
-    API_CURRENCIES_URI = f'{BASE_URI}/marketplace-api/v1/currencies'
-
-    API_LENDING_COMPANIES_URI = f'{BASE_URI}/en/webapp-api/lender-companies'
+    API_FILTER_URI = f'{BASE_URI}/en/webapp-api/user/investments/filters'
 
     API_INVESTMENTS_URI = f'{BASE_URI}/marketplace-api/v1/user/note-series/investments'
 
