@@ -248,6 +248,13 @@ class API:
 
             investment_params['minLendingCompanyRiskScore'] = min_risk_score
 
+        if isinstance(strategies, list):
+            available_strategies = self.get_investment_filters(current)['autoInvestDefinitions']
+
+            for strategy in strategies:
+                if strategy not in available_strategies:
+                    raise ValueError(f'{strategy} must be one of the following: {", ".join(available_strategies)}')
+
         if isinstance(isin, str):
             if len(isin) != 12:
                 raise ValueError('ISIN must be 12 characters long.')
@@ -625,6 +632,7 @@ if __name__ == '__main__':
         quantity=1300,
         notes=True,
         current=False,
+        strategies=['hi'],
     )
 
     print(investments)
