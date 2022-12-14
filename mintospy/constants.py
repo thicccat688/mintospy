@@ -192,6 +192,19 @@ class CONSTANTS:
         'finished_date': 'finished_at',
     }
 
+    LOANS_SORT_FIELDS = {
+        'isin': 'isin',
+        'risk_score': 'mintosRiskScoreDecimal',
+        'lending_company': 'lender',
+        'interest_rate': 'interestRate',
+        'remaining_term': 'maturityDate',
+        'purchase_date': 'createdAt',
+        'invested_amount': 'initialAmount',
+        'outstanding_principal': 'amount',
+        'finished_date': 'deletedAt',
+        'reinvest': 'showOnlyInvestedByCurrentInvestor',
+    }
+
     SESSION_COOKIES = {
         'PHPSESSID',
         'MW_SESSION_ID',

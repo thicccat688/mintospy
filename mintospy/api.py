@@ -278,17 +278,17 @@ class API:
 
         if isinstance(pending_payments, bool):
             if notes:
-                investment_params['pending_payments_status'] = 1 if pending_payments else 0
+                investment_params['hasPendingPayments'] = 1 if pending_payments else 0
 
             else:
-                investment_params['hasPendingPayments'] = pending_payments
+                investment_params['pending_payments_status'] = pending_payments
 
         if isinstance(listed_for_sale, bool):
             if notes:
-                investment_params['listed_for_sale_status'] = 1 if listed_for_sale else 0
+                investment_params['listedForSale'] = 1 if listed_for_sale else 0
 
             else:
-                investment_params['listedForSale'] = listed_for_sale
+                investment_params['listed_for_sale_status'] = listed_for_sale
 
         if isinstance(lender_statuses, list):
             investment_params['lenderStatuses'] = []
@@ -383,8 +383,246 @@ class API:
             params={'status': 0 if current else 1},
         )
 
-    def get_loans(self, raw: bool = False) -> List[dict]:
-        pass
+    def get_loans(
+            self,
+            currencies: List[str],
+            quantity: int = 30,
+            start_page: int = 1,
+            sort_field: str = 'invested_amount',
+            countries: List[str] = None,
+            pending_payments: bool = None,
+            amortization_methods: List[str] = None,
+            claim_id: str = None,
+            isin: str = None,
+            late_loan_exposure: List[str] = None,
+            lending_companies: List[str] = None,
+            lender_statuses: List[str] = None,
+            listed_for_sale: bool = None,
+            max_interest_rate: float = None,
+            min_interest_rate: float = None,
+            loan_types: List[str] = None,
+            max_risk_score: float = 10,
+            min_risk_score: float = 0,
+            strategies: List[str] = None,
+            max_term: int = None,
+            min_term: int = None,
+            max_purchased_date: datetime = None,
+            min_purchased_date: datetime = None,
+            current: bool = True,
+            ascending_sort: bool = False,
+            raw: bool = False,
+    ) -> Union[pd.DataFrame, List[dict]]:
+        """
+        :param currencies: Currenies that investments are denominated in
+        :param quantity: Quantity of investments to get
+        :param start_page: Page to start getting investments from (Gets from first page by default)
+        :param sort_field: Field to sort by (
+        Sort fields:
+        isin -> Sort by Notes' ISIN alphabetically
+        )
+        :param countries: What countries notes should be issued from
+        :param pending_payments: If payments for notes should be pending or not
+        :param amortization_methods: Amortization type of notes (Full, partial, interest-only, or bullet)
+        :param claim_id: ID of claim to filter by
+        :param isin: ISIN of security to filter by
+        :param late_loan_exposure: Late loan exposure of notes (0_20 for 0-20%, 20_40 for 20-40%, and so on)
+        :param lending_companies: Only return notes issued by specified lending companies
+        :param lender_statuses: Only return notes from lenders in a certain state (Active, suspended, or in default)
+        :param listed_for_sale: Specify whether to return notes that are on sale in the secondary market or not
+        :param max_interest_rate: Only return notes up to this maximum interest rate
+        :param min_interest_rate: Only return notes up to this minimum interest rate
+        :param loan_types: Only return notes composed of certain loan types
+        (agricultural, business, car, invoice_financing, mortgage, pawnbroking, personal, short_term)
+        :param max_risk_score: Only returns notes below this risk score (1-10 or "SW" for notes with suspended rating)
+        :param min_risk_score: Only returns notes above this risk score (1-10 or "SW" for notes with suspended rating)
+        :param strategies: Only return notes that were invested in with certain strategies
+        :param max_term: Only return notes up to a maximum term
+        :param min_term: Only return notes up to a minimum term
+        :param max_purchased_date: Only returns notes purchased before date
+        :param min_purchased_date: Only returns notes purchased after date
+        :param current: Returns current notes in portfolio if set to true, otherwise returns finished investments
+        :param ascending_sort: Sort notes in ascending order based on "sort" argument if True, otherwise sort descending
+        :param raw: Return raw notes JSON if set to True, or returns pandas dataframe of notes if set to False
+        :return: Pandas DataFrame or raw JSON of notes (Chosen in the "raw" argument)
+        """
+
+        if sort_field not in CONSTANTS.LOANS_SORT_FIELDS:
+            raise ValueError(f'{sort_field} not in claims sort fields: {", ".join(CONSTANTS.LOANS_SORT_FIELDS)}.')
+
+        parsed_sort_field = CONSTANTS.LOANS_SORT_FIELDS[sort_field]
+
+        investment_params = {'currencies': [CONSTANTS.get_currency_iso(curr) for curr in currencies]}
+
+        extra_data = {
+            'pagination': {
+                'maxResults': CONSTANTS.MAX_RESULTS,
+                'page': start_page,
+            },
+            'sorting': {
+                'sortField': parsed_sort_field,
+                'sortOrder': 'ASC' if ascending_sort else 'DESC',
+            },
+        }
+
+        investment_params.update(extra_data)
+
+        if start_page < 1:
+            raise ValueError('Start page must be superior or equal to 1.')
+
+        if isin and claim_id:
+            raise ValueError('You can only filter by ISIN or a Claim ID.')
+
+        if isinstance(countries, list):
+            investment_params['countries'] = []
+
+            for country in countries:
+                investment_params['countries'].append(CONSTANTS.get_country_iso(country))
+
+        if isinstance(lending_companies, list):
+            investment_params['lenderGroups'] = []
+
+            for lender in lending_companies:
+                investment_params['lenderGroups'].append(CONSTANTS.get_lending_company_id(lender))
+
+        if isinstance(loan_types, list):
+            investment_params['pledges'] = []
+
+            for type_ in loan_types:
+                if type_ not in CONSTANTS.LOAN_TYPES:
+                    raise ValueError(f'Loan type must be one of the following: {", ".join(CONSTANTS.LOAN_TYPES)}')
+
+                investment_params['pledges'].append(type_)
+
+        if isinstance(amortization_methods, list):
+            investment_params['scheduleTypes'] = []
+
+            for method in amortization_methods:
+                investment_params['schedule_types'].append(CONSTANTS.get_amoritzation_method_id(method))
+
+        if isinstance(max_risk_score, (float, int)):
+            if 1 > max_risk_score > 10:
+                raise ValueError(
+                    'Maximum risk score needs to be a number in between 1-10.',
+                )
+
+            investment_params['maxLendingCompanyRiskScore'] = max_risk_score
+
+        if isinstance(min_risk_score, (float, int)):
+            if 1 > min_risk_score > 10:
+                raise ValueError(
+                    'Minimum risk score needs to be a number in between 1-10.',
+                )
+
+            investment_params['minLendingCompanyRiskScore'] = min_risk_score
+
+        if isinstance(strategies, list):
+            available_strategies = list(
+                map(lambda strat: strat['label'], self.get_investment_filters(current)['autoInvestDefinitions'])
+            )
+
+            for strategy in strategies:
+                if strategy not in available_strategies:
+                    raise ValueError(
+                        f'{strategy} must be one of the following strategies: {", ".join(available_strategies)}'
+                    )
+
+        if isinstance(isin, str):
+            if len(isin) != 12:
+                raise ValueError('ISIN must be 12 characters long.')
+
+            investment_params['isin'] = isin
+
+        if isinstance(late_loan_exposure, list):
+            investment_params['lateLoanExposures'] = []
+
+            for exposure in late_loan_exposure:
+                if exposure not in CONSTANTS.LATE_LOAN_EXPOSURES:
+                    raise ValueError(
+                        f'Late loan exposure must be one of the following: {", ".join(CONSTANTS.LATE_LOAN_EXPOSURES)}',
+                    )
+
+                investment_params['lateLoanExposures'].append(late_loan_exposure)
+
+        if isinstance(pending_payments, bool):
+            investment_params['pending_payments_status'] = 1 if pending_payments else 0
+
+        if isinstance(listed_for_sale, bool):
+            investment_params['listed_for_sale_status'] = 1 if listed_for_sale else 0
+
+        if isinstance(lender_statuses, list):
+            investment_params['lenderStatuses'] = []
+
+            for status in lender_statuses:
+                if status not in CONSTANTS.LENDING_COMPANY_STATUSES:
+                    raise ValueError(
+                        f'Lender status must be one of the following: {", ".join(CONSTANTS.LENDING_COMPANY_STATUSES)}',
+                    )
+
+                investment_params['lenderStatuses'].append(status)
+
+        if isinstance(max_interest_rate, float):
+            investment_params['maxInterestRate'] = max_interest_rate
+
+        if isinstance(min_interest_rate, float):
+            investment_params['minInterestRate'] = min_interest_rate
+
+        if isinstance(max_term, float):
+            investment_params['termTo'] = max_term
+
+        if isinstance(min_term, int):
+            investment_params['termFrom'] = min_term
+
+        if isinstance(max_purchased_date, datetime):
+            investment_params['investmentDateTo'] = max_purchased_date.strftime('%d.%m.%Y')
+
+        if isinstance(min_purchased_date, datetime):
+            investment_params['investmentDateFrom'] = min_purchased_date.strftime('%d.%m.%Y')
+
+        request_headers = {}
+
+        total_retrieved = 0
+
+        response = self._make_request(
+            url=ENDPOINTS.API_LOANS_URI,
+            method='POST',
+            headers=request_headers,
+            data=investment_params,
+        )
+
+        total_retrieved += CONSTANTS.MAX_RESULTS
+
+        responses = [response]
+
+        while total_retrieved < quantity:
+            if not response['pagination']['hasNextPage']:
+                break
+
+            investment_params['page'] += 1
+
+            next_response = self._make_request(
+                url=ENDPOINTS.API_LOANS_URI,
+                method='POST',
+                headers=request_headers,
+                data=investment_params,
+            )
+
+            responses.append(next_response)
+
+            total_retrieved += 300
+
+        items = []
+
+        for resp in responses:
+            items.extend(resp['items'])
+
+        items = items[0:quantity]
+
+        if raw or len(items) == 0:
+            return items
+
+        row_index = 'ISIN'
+
+        return pd.DataFrame.from_records(Utils.parse_investments(items)).set_index(row_index).fillna('N/A')
 
     def login(self) -> None:
         """
