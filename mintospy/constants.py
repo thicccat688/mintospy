@@ -1,10 +1,14 @@
 class CONSTANTS:
+    # Retrieved from currencies endpoint (https://www.mintos.com/webapp/api/marketplace-api/v1/currencies)
     CURRENCIES = {
         'PLN': 985,
         'GEL': 981,
         'EUR': 978,
+        'RON': 946,
+        'USD': 840,
         'GBP': 826,
         'SEK': 752,
+        'RUB': 643,
         'MXN': 484,
         'KZT': 398,
         'DKK': 208,
@@ -15,6 +19,8 @@ class CONSTANTS:
         'zł': 'PLN',
         'ლ': 'GEL',
         '€': 'EUR',
+        'lei': 'RON',
+        '$': 'USD',
         '£': 'GBP',
         'kr': 'SEK',
         'Mex$': 'MXN',
@@ -169,6 +175,7 @@ class CONSTANTS:
         'purchase_date': 'createdAt',
         'invested_amount': 'initialAmount',
         'outstanding_principal': 'amount',
+        'finished_date': 'deletedAt',
     }
 
     CLAIMS_SORT_FIELDS = {
@@ -182,6 +189,7 @@ class CONSTANTS:
         'next_payment_date': 'next_planned_payment_date',
         'received_payments': 'received_amount',
         'pending_payments': 'pending_payments_amount',
+        'finished_date': 'finished_at',
     }
 
     SESSION_COOKIES = {

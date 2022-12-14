@@ -12,6 +12,7 @@ from typing import List
 import pickle
 import time
 import json
+import os
 
 
 CURRENCIES = CONSTANTS.CURRENCY_SYMBOLS
@@ -67,6 +68,15 @@ class Utils:
 
         return new_string
 
+    @staticmethod
+    def dict_to_form_data(__obj: dict) -> str:
+        form_data = ''
+
+        for k, v in __obj.items():
+            form_data += f'{k}={v}&'
+
+        return form_data[:-1]
+
     @classmethod
     def import_cookies(cls, driver: WebDriver, file_path: str) -> bool:
         """
@@ -80,7 +90,9 @@ class Utils:
                 cookies = pickle.load(f)
 
                 if not cls.validate_cookies(cookies):
-                    open(file_path, 'w').close()
+                    f.close()
+
+                    os.remove(file_path)
 
                     return False
 

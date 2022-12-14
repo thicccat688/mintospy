@@ -136,15 +136,14 @@ class API:
             max_interest_rate: float = None,
             min_interest_rate: float = None,
             loan_types: List[str] = None,
-            max_risk_score: float = None,
-            min_risk_score: float = None,
+            max_risk_score: float = 10,
+            min_risk_score: float = 0,
             strategies: List[str] = None,
             max_term: int = None,
             min_term: int = None,
             max_purchased_date: datetime = None,
             min_purchased_date: datetime = None,
             current: bool = True,
-            include_manual_investments: bool = True,
             ascending_sort: bool = False,
             raw: bool = False,
     ) -> Union[pd.DataFrame, List[dict]]:
@@ -153,8 +152,31 @@ class API:
         :param quantity: Quantity of investments to get
         :param start_page: Page to start getting investments from (Gets from first page by default)
         :param notes: Specify whether to get Notes or Claims (True -> Gets notes; False -> Gets claims)
-        :param sort_field: Field to sort by (isin, mintosRiskScoreDecimal, lender, interestRate, maturityDate,
-        createdAt, initialAmount, amount)
+        :param sort_field: Field to sort by (
+        Notes sort fields:
+        isin -> Sort by Notes' ISIN alphabetically;
+        risk_score -> Sort by risk score;
+        lending_company -> Sort by lending company alphabetically;
+        interest_rate -> Sort by interest rate;
+        remaining_term -> Sort by remaining term;
+        purchase_date -> Sort by purchase date;
+        invested_amount -> Sort by invested amount;
+        outstanding_principal -> Sort by oustanding principal;
+        finished_date -> Sort by finished date;
+        -------------------------------------------------------------------------------------
+        Claims sort fields:
+        id -> Sort by id alphabetically,
+        lending_company -> Sort alphabetically by lending company;
+        interest_rate -> Sort by interest rate;
+        remaining_term -> Sort by remaining term;
+        purchase_date -> Sort by purchase date;
+        invested_amount -> Sort by invested amount;
+        outstanding_principal -> Sort by oustanding principal;
+        next_payment_date -> Sort by next planned payment date;
+        received_payments -> Sort by received payments;
+        pending_payments -> Sort by pending payments;
+        finished_date -> Sort by finished date;
+        )
         :param countries: What countries notes should be issued from
         :param pending_payments: If payments for notes should be pending or not
         :param amortization_methods: Amortization type of notes (Full, partial, interest-only, or bullet)
@@ -176,10 +198,9 @@ class API:
         :param max_purchased_date: Only returns notes purchased before date
         :param min_purchased_date: Only returns notes purchased after date
         :param current: Returns current notes in portfolio if set to true, otherwise returns finished investments
-        :param include_manual_investments: Include notes that were purchased manually, instead of by auto invest
         :param ascending_sort: Sort notes in ascending order based on "sort" argument if True, otherwise sort descending
         :param raw: Return raw notes JSON if set to True, or returns pandas dataframe of notes if set to False
-        :return: Pandas DataFrame or raw JSON of notes (Chosen in the "raw" argument), extra data, and pagination data
+        :return: Pandas DataFrame or raw JSON of notes (Chosen in the "raw" argument)
         """
 
         currency_iso_code = CONSTANTS.get_currency_iso(currency)
@@ -194,7 +215,7 @@ class API:
             if sort_field not in CONSTANTS.CLAIMS_SORT_FIELDS:
                 raise ValueError(f'{sort_field} not in claims sort fields: {", ".join(CONSTANTS.CLAIMS_SORT_FIELDS)}.')
 
-            parsed_sort_field = CONSTANTS.NOTES_SORT_FIELDS[sort_field]
+            parsed_sort_field = CONSTANTS.CLAIMS_SORT_FIELDS[sort_field]
 
         investment_params = {'currency': currency_iso_code}
 
@@ -217,6 +238,7 @@ class API:
                 'max_results': CONSTANTS.MAX_RESULTS,
                 'sort_field': parsed_sort_field,
                 'sort_order': 'ASC' if ascending_sort else 'DESC',
+                'page': start_page,
                 'format': 'json',
             }
 
@@ -228,7 +250,7 @@ class API:
         else:
             url = ENDPOINTS.API_CLAIMS_URI
 
-            investment_params['status'] = 1 if current else 0
+            investment_params['status'] = 0 if current else 1
 
         if start_page < 1:
             raise ValueError('Start page must be superior or equal to 1.')
@@ -321,13 +343,6 @@ class API:
 
                 investment_params['lenderStatuses'].append(status)
 
-        if isinstance(include_manual_investments, bool):
-            if notes:
-                investment_params['includeManualInvestments'] = include_manual_investments
-
-            else:
-                investment_params['include_manual_investments'] = 1 if include_manual_investments else 0
-
         if isinstance(max_interest_rate, float):
             investment_params['maxInterestRate'] = max_interest_rate
 
@@ -368,7 +383,7 @@ class API:
             if not response['pagination']['hasNextPage']:
                 break
 
-            investment_params['pagination']['page'] += 1
+            investment_params['page'] += 1
 
             next_response = self._make_request(
                 url=url,
@@ -389,6 +404,8 @@ class API:
 
             else:
                 items.extend(resp['data'])
+
+        items = items[0:quantity]
 
         if raw or len(items) == 0:
             return items
@@ -503,7 +520,7 @@ class API:
         with open('cookies.pkl', 'wb') as f:
             pickle.dump(self.__driver.get_cookies(), f)
 
-        self.__driver.quit()
+        # self.__driver.quit()
 
     def _gen_totp(self) -> str:
         """
@@ -543,7 +560,11 @@ class API:
         }
 
         if isinstance(data, dict):
-            fetch_parameters.update({'body': json.dumps(data)})
+            if request_headers['content-type'] == 'application/json':
+                fetch_parameters.update({'body': json.dumps(data)})
+
+            else:
+                fetch_parameters.update({'body': Utils.dict_to_form_data(data)})
 
         fetch_script = f'''
         var response = await fetch("{url}", {json.dumps(fetch_parameters)})
@@ -621,8 +642,6 @@ class API:
         options.add_argument('--no-sandbox')
         options.add_argument("--disable-extensions")
 
-        options.set_capability('goog:loggingPrefs', {'performance': 'ALL'})
-
         return webdriver.Chrome(options=options, service=service)
 
     @staticmethod
@@ -654,10 +673,10 @@ if __name__ == '__main__':
     t1 = time.time()
 
     investments = mintos_api.get_investments(
-        currency='KZT',
-        quantity=200,
+        currency='EUR',
+        quantity=1000,
         notes=False,
-        current=True,
+        current=False,
     )
 
     print(investments)
