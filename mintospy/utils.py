@@ -1,12 +1,6 @@
-from mintospy.exceptions import MintosException
 from mintospy.constants import CONSTANTS
-from typing import Generator, Union
-from bs4 import BeautifulSoup
-from bs4.element import ResultSet
-from selenium.webdriver.support import expected_conditions as ec
-from selenium.webdriver.remote.webelement import WebElement
+from typing import Union
 from selenium.webdriver.chrome.webdriver import WebDriver
-from selenium.webdriver.support.ui import WebDriverWait
 from datetime import datetime, date
 from typing import List
 import pickle
@@ -123,21 +117,6 @@ class Utils:
         return True
 
     @classmethod
-    def extract_text(cls, elements: List[any], *, return_type: str = 'float') -> list:
-        return_types = ['float', 'date', 'str']
-
-        if return_type not in return_types:
-            raise ValueError(f'Invalid return type, only {return_types} available.')
-
-        if return_type == 'float':
-            return list(map(lambda element: float(element.get_text(strip=True)), elements))
-
-        if return_type == 'date':
-            return list(map(lambda element: cls.str_to_date(element.get_text(strip=True)), elements))
-
-        return list(map(lambda element: element.get_text(strip=True), elements))
-
-    @classmethod
     def str_to_date(cls, __str: str) -> Union[date, str]:
         default_return = 'Late'
 
@@ -155,90 +134,6 @@ class Utils:
         query_string = cls._mount_query_string(params)
 
         return url + query_string
-
-    @classmethod
-    def parse_api_response(cls, markup: str) -> any:
-        """
-        :param markup: HTML markup returned from Mintos' API
-        :return: Parsed API response in parsed JSON if possible, otherwise in text
-        """
-
-        parsed_html = BeautifulSoup(markup, 'html.parser')
-
-        response_text = parsed_html.find('pre').text
-
-        response_text = cls._safe_parse_json(response_text)
-
-        if isinstance(response_text, dict):
-            error_message = response_text.get('message')
-
-            if error_message:
-                raise MintosException(error_message)
-
-        return response_text
-
-    @classmethod
-    def parse_mintos_items(cls, __obj: Union[list, dict]):
-        return {k: v for (k, v) in cls._parse_mintos_items_gen(__obj)}
-
-    @staticmethod
-    def get_elements(markup: str, tag: str, attrs: dict) -> ResultSet:
-        parsed_html = BeautifulSoup(markup, 'html.parser')
-
-        data = parsed_html.find_all(
-            name=tag,
-            attrs=attrs,
-        )
-
-        return data
-
-    @staticmethod
-    def _wait_for_element(
-            driver: WebDriver,
-            by: str,
-            value: str,
-            timeout: int,
-            multiple: bool = False,
-    ) -> Union[WebElement, List[WebElement]]:
-        """
-        :param by: Tag to get element by (id, class name, xpath, tag name, etc.)
-        :param value: Value of the tag (Example: tag -> id, locator -> button-id)
-        :param timeout: Time to wait for element before raising TimeoutError
-        :param multiple: Specify whether to return multiple web elements that match tag and locator
-        :return: Web element specified by tag and locator
-        :raises TimeoutException: If the element is not located within the desired time span
-        """
-
-        element_attributes = (by, value)
-
-        WebDriverWait(driver, timeout).until(ec.visibility_of_element_located(element_attributes))
-
-        if multiple:
-            return driver.find_elements(by=by, value=value)
-
-        return driver.find_element(by=by, value=value)
-
-    @classmethod
-    def _parse_mintos_items_gen(cls, __obj: object) -> Generator:
-        if isinstance(__obj, list):
-            for o in __obj:
-                yield from cls._parse_mintos_items_gen(o)
-
-        if not isinstance(__obj, dict):
-            yield __obj
-
-        for (k, v) in __obj.items():
-            if isinstance(v, dict):
-                yield from cls._parse_mintos_items_gen(v)
-
-            elif isinstance(v, list):
-                yield k, [
-                    {t: cls._str_to_float(c) for (t, c) in cls._parse_mintos_items_gen(p)}
-                    if isinstance(p, dict) else cls._str_to_float(p) for p in v
-                ]
-
-            else:
-                yield k, cls._str_to_float(v)
 
     @staticmethod
     def _mount_query_string(params: Union[dict, List[tuple]]) -> str:
@@ -275,7 +170,7 @@ class Utils:
     @staticmethod
     def _str_to_float(__str: str) -> object:
         try:
-            return float(__str)
+            return round(float(__str), 2)
 
         except Exception:
             return __str
