@@ -341,7 +341,7 @@ class API:
             if not response['pagination']['hasNextPage']:
                 break
 
-            investment_params['page'] += 1
+            investment_params['pagination']['page'] += 1
 
             next_response = self._make_request(
                 url=url,
@@ -388,7 +388,7 @@ class API:
             currencies: List[str],
             quantity: int = 30,
             start_page: int = 1,
-            sort_field: str = 'invested_amount',
+            sort_field: str = 'interest_rate',
             countries: List[str] = None,
             pending_payments: bool = None,
             amortization_methods: List[str] = None,
@@ -417,7 +417,13 @@ class API:
         :param start_page: Page to start getting investments from (Gets from first page by default)
         :param sort_field: Field to sort by (
         Sort fields:
-        isin -> Sort by Notes' ISIN alphabetically
+        isin -> Sort by Notes' ISIN alphabetically;
+        risk_score -> Sort by risk score;
+        lending_company -> Sort by lending company alphabetically;
+        remaining_term -> Sort by remaining term;
+        initial_principal -> Sort by initial principal / remaining;
+        interest_rate -> Sort by interest rate;
+        available_for_investment -> Sort by amount available for investment;
         )
         :param countries: What countries notes should be issued from
         :param pending_payments: If payments for notes should be pending or not
@@ -590,10 +596,13 @@ class API:
         responses = [response]
 
         while total_retrieved < quantity:
+            if response.get('errors'):
+                raise MintosException(response['errors'][0])
+
             if not response['pagination']['hasNextPage']:
                 break
 
-            investment_params['page'] += 1
+            investment_params['pagination']['page'] += 1
 
             next_response = self._make_request(
                 url=ENDPOINTS.API_LOANS_URI,
@@ -616,9 +625,7 @@ class API:
         if raw or len(items) == 0:
             return items
 
-        row_index = 'ISIN'
-
-        return pd.DataFrame.from_records(Utils.parse_investments(items)).set_index(row_index).fillna('N/A')
+        return pd.DataFrame.from_records(Utils.parse_investments(items)).set_index('ISIN').fillna('N/A')
 
     def login(self) -> None:
         """
@@ -697,9 +704,11 @@ class API:
         ).click()
 
         try:
+            loc = '//iframe[@title="recaptcha challenge expires in two minutes"][@style="width: 400px; height: 580px;"]'
+
             iframe = self._wait_for_element(
                 tag='xpath',
-                locator='//iframe[@title="recaptcha challenge expires in two minutes"][@style="width: 400px; height: 580px;"]',
+                locator=loc,
                 timeout=2,
             )
 
@@ -875,5 +884,7 @@ if __name__ == '__main__':
     loans = mintos_api.get_loans(
         currencies=['EUR', 'KZT'],
         countries=['Kazakhstan', 'United Kingdom'],
-        quantity=2000,
+        quantity=100,
     )
+
+    print(loans)

@@ -196,13 +196,10 @@ class CONSTANTS:
         'isin': 'isin',
         'risk_score': 'mintosRiskScoreDecimal',
         'lending_company': 'lender',
-        'interest_rate': 'interestRate',
         'remaining_term': 'maturityDate',
-        'purchase_date': 'createdAt',
-        'invested_amount': 'initialAmount',
-        'outstanding_principal': 'amount',
-        'finished_date': 'deletedAt',
-        'reinvest': 'showOnlyInvestedByCurrentInvestor',
+        'initial_principal': 'aggregateNominalValue',
+        'interest_rate': 'interestRate',
+        'available_for_investment': 'availableForInvestmentAmount',
     }
 
     SESSION_COOKIES = {
