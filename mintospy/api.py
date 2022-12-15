@@ -203,7 +203,7 @@ class API:
             raise ValueError('Start page must be superior or equal to 1.')
 
         if isin and claim_id:
-            raise ValueError('You can only filter by ISIN or a Claim ID.')
+            raise ValueError(f'You can only filter by ISIN or Claim ID.')
 
         if isinstance(countries, list):
             investment_params['countries'] = []
@@ -392,7 +392,6 @@ class API:
             countries: List[str] = None,
             pending_payments: bool = None,
             amortization_methods: List[str] = None,
-            claim_id: str = None,
             isin: str = None,
             late_loan_exposure: List[str] = None,
             lending_companies: List[str] = None,
@@ -406,8 +405,8 @@ class API:
             strategies: List[str] = None,
             max_term: int = None,
             min_term: int = None,
-            max_purchased_date: datetime = None,
-            min_purchased_date: datetime = None,
+            direct_investment_structure: bool = None,
+            min_investment_amount: float = None,
             current: bool = True,
             ascending_sort: bool = False,
             raw: bool = False,
@@ -423,7 +422,6 @@ class API:
         :param countries: What countries notes should be issued from
         :param pending_payments: If payments for notes should be pending or not
         :param amortization_methods: Amortization type of notes (Full, partial, interest-only, or bullet)
-        :param claim_id: ID of claim to filter by
         :param isin: ISIN of security to filter by
         :param late_loan_exposure: Late loan exposure of notes (0_20 for 0-20%, 20_40 for 20-40%, and so on)
         :param lending_companies: Only return notes issued by specified lending companies
@@ -438,8 +436,8 @@ class API:
         :param strategies: Only return notes that were invested in with certain strategies
         :param max_term: Only return notes up to a maximum term
         :param min_term: Only return notes up to a minimum term
-        :param max_purchased_date: Only returns notes purchased before date
-        :param min_purchased_date: Only returns notes purchased after date
+        :param direct_investment_structure: Only returns notes with a direct or indirect structure
+        :param min_investment_amount: Minimum investment amount for a Note
         :param current: Returns current notes in portfolio if set to true, otherwise returns finished investments
         :param ascending_sort: Sort notes in ascending order based on "sort" argument if True, otherwise sort descending
         :param raw: Return raw notes JSON if set to True, or returns pandas dataframe of notes if set to False
@@ -468,9 +466,6 @@ class API:
 
         if start_page < 1:
             raise ValueError('Start page must be superior or equal to 1.')
-
-        if isin and claim_id:
-            raise ValueError('You can only filter by ISIN or a Claim ID.')
 
         if isinstance(countries, list):
             investment_params['countries'] = []
@@ -572,11 +567,12 @@ class API:
         if isinstance(min_term, int):
             investment_params['termFrom'] = min_term
 
-        if isinstance(max_purchased_date, datetime):
-            investment_params['investmentDateTo'] = max_purchased_date.strftime('%d.%m.%Y')
+        if isinstance(direct_investment_structure, bool):
+            # Mintos' API has true and false reversed for this field
+            investment_params['indirectInvestmentStructure'] = direct_investment_structure
 
-        if isinstance(min_purchased_date, datetime):
-            investment_params['investmentDateFrom'] = min_purchased_date.strftime('%d.%m.%Y')
+        if isinstance(min_investment_amount, float):
+            investment_params['minAmount'] = min_investment_amount
 
         request_headers = {}
 
@@ -723,11 +719,9 @@ class API:
         with open('cookies.pkl', 'wb') as f:
             pickle.dump(self.__driver.get_cookies(), f)
 
-    def quit(self) -> None:
+    def _save_cookies(self) -> None:
         with open('cookies.pkl', 'wb') as f:
             pickle.dump(self.__driver.get_cookies(), f)
-
-        # self.__driver.quit()
 
     def _gen_totp(self) -> str:
         """
@@ -873,11 +867,13 @@ if __name__ == '__main__':
         currency='EUR',
         quantity=1300,
         notes=True,
-        current=False,
+        current=True,
     )
 
     print(investments)
 
-    print('investments fetching duration --->', time.time() - t2)
-
-    mintos_api.quit()
+    loans = mintos_api.get_loans(
+        currencies=['EUR', 'KZT'],
+        countries=['Kazakhstan', 'United Kingdom'],
+        quantity=2000,
+    )
