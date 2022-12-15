@@ -7,13 +7,15 @@ class ENDPOINTS:
 
     API_TFA_URI = f'{BASE_URI}/en/webapp-api/user/login/otp'
 
-    API_FILTER_URI = f'{BASE_URI}/en/webapp-api/user/investments/filters'
-
     API_INVESTMENTS_URI = f'{BASE_URI}/marketplace-api/v1/user/note-series/investments'
+
+    API_INVESTMENTS_FILTER_URI = f'{BASE_URI}/en/webapp-api/user/investments/filters'
 
     API_CLAIMS_URI = f'{BASE_URI}/en/webapp-api/user/investments'
 
     API_LOANS_URI = f'{BASE_URI}/marketplace-api/v1/note-series/primary'
+
+    API_LOANS_FILTER_URI = f'{BASE_URI}/en/webapp-api/market/primary/filters'
 
     WEB_APP_URI = 'https://www.mintos.com/en'
 

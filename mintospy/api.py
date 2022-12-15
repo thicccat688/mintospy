@@ -379,7 +379,7 @@ class API:
         """
 
         return self._make_request(
-            url=ENDPOINTS.API_FILTER_URI,
+            url=ENDPOINTS.API_INVESTMENTS_FILTER_URI,
             params={'status': 0 if current else 1},
         )
 
@@ -727,6 +727,15 @@ class API:
 
         with open('cookies.pkl', 'wb') as f:
             pickle.dump(self.__driver.get_cookies(), f)
+
+    def get_loan_filters(self) -> dict:
+        """
+        :return: Loan filters provided by Mintos
+        """
+
+        return self._make_request(
+            url=ENDPOINTS.API_LOANS_FILTER_URI,
+        )
 
     def _save_cookies(self) -> None:
         with open('cookies.pkl', 'wb') as f:
