@@ -647,11 +647,11 @@ class API:
             self._wait_for_element(
                 tag='id',
                 locator='login-username',
-                timeout=5,
+                timeout=10,
             ).send_keys(self.email)
 
         except TimeoutException:
-            self.__driver.find_element(by='css selector', value='h1[data-testid="page-title"]')
+            self._wait_for_element(tag='css selector', locator='h1[data-testid="page-title"]', timeout=5)
 
             raise MintosException("Mintos' system is currently being updated. Try again later.")
 
@@ -848,13 +848,8 @@ class API:
         options = webdriver.ChromeOptions()
         service = Service(ChromeDriverManager().install())
 
-        options.add_experimental_option('detach', True)
-
         # options.add_argument("--headless")
         options.add_argument("--window-size=1920,1080")
-
-        options.add_argument('--start-maximized')
-        options.add_argument('--disable-gpu')
 
         options.add_argument('--no-sandbox')
         options.add_argument("--disable-extensions")
@@ -877,7 +872,7 @@ if __name__ == '__main__':
         tfa_secret=os.getenv(key='tfa_secret'),
     )
 
-    print(time.time() - t1)
+    print('Log in duration --->', time.time() - t1)
 
     t2 = time.time()
 
@@ -893,7 +888,7 @@ if __name__ == '__main__':
     loans = mintos_api.get_loans(
         currencies=['EUR', 'KZT'],
         countries=['Kazakhstan', 'United Kingdom'],
-        quantity=100,
+        quantity=10000,
     )
 
     print(loans)
