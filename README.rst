@@ -89,4 +89,4 @@ Demonstration of the authentication process:
 
 **Final message:**
 
-If you've reached this far, thank you! If you have any criticism or ideas about what can be improved, please get in touch with me. Thanks again, and I hope this package can be of use to you!
+If you've reached this far, thank you! If you have any criticism or ideas about what can be improved, please get in touch with me through discord (ThiccCat#3210). Thanks again, and I hope this package can be of use to you!
