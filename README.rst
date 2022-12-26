@@ -65,9 +65,14 @@ You already have everything you need above, but if you're curious about how I've
 
 - This part uses a headless browser to fill out the login form, resolve all the ReCAPTCHA challenges that appear, and, if applicable, generate the current TOTP token using the base32 secret provided by the user and fill out the TFA section.
 - After a successful login, the driver pickles and saves the cookies, then load those cookies to avoid logging in again the next time the scraper is used (If the cookies haven't expired).
-- Demonstration video of the authentication process: https://i.gyazo.com/920db679a5af97ba8726ea7124a81cf8.mp4
 - To solve the ReCAPTCHA challenges, I'm using a package I made which works with Selenium. It solves the ReCAPTCHA challenges by using Google's speech recognition API to transcribe the audio and fill out the form as needed.
 - If you're interested, here is the repository's URL: https://github.com/thicccat688/selenium-recaptcha-solver
+
+Demonstration of the authentication process:
+
+.. raw:: html
+
+    <a href="https://gyazo.com/920db679a5af97ba8726ea7124a81cf8"><img src="https://i.gyazo.com/920db679a5af97ba8726ea7124a81cf8.gif" alt="Image from Gyazo" width="1280"/></a>
 
 |
 
