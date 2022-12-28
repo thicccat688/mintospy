@@ -12,8 +12,8 @@ Features
 ----
 
 - Get portfolio data (Active funds, late funds, etc).
-- Get Notes and Claims that you've invested in, with support for pagination.
-- Get Notes that are listed on the Mintos marketplace, with support for pagination.
+- Get Notes and Claims that you've invested in, with support for pagination and Mintos' filters.
+- Get Notes that are listed on the Mintos marketplace, with support for pagination and Mintos' filters.
 - Returns Notes/Claims data in an easy-to-use Pandas DataFrame.
 - Allows option to get raw data in JSON, instead of the parsed data in the Pandas DataFrame.
 
