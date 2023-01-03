@@ -15,13 +15,12 @@ from typing import Union, List
 from datetime import datetime
 from bs4 import BeautifulSoup
 import pandas as pd
-import warnings
 import requests
+import warnings
 import pickle
 import pyotp
 import time
-import json
-import ast
+import copy
 import os
 
 
@@ -56,7 +55,7 @@ class API:
         # Initialise web driver session
         self.__driver = self._create_driver()
 
-        # Intiailise RecaptchaV2 solver object
+        # Initialise RecaptchaV2 solver object
         self.__solver = RECAPTCHA_API(driver=self.__driver)
 
         # Automatically authenticate to Mintos API upon API object initialization
@@ -64,12 +63,57 @@ class API:
 
         self.__csrf_token = self._get_csrf_token()
 
+    def get_portfolio_data(self, currency: str) -> dict:
+        """
+        :param currency: Currency of portfolio to get data from
+        :return: Active/late funds, bad debt, defaulted debt, funds in recovery, count of active investments, and so on
+        """
+
+        currency_iso_code = CONSTANTS.get_currency_iso(currency)
+
+        response = self._make_request(
+            url=ENDPOINTS.API_PORTFOLIO_URI,
+            params={'currencyIsoCode': currency_iso_code}
+        )
+
+        return Utils.parse_mintos_items(response)
+
+    def get_net_annual_return(self, currency: str) -> dict:
+        """
+        :param currency: Currency of portfolio to get data from
+        :return: Net annual return of requested portfolio with and without campaign bonuses
+        """
+
+        currency_iso_code = CONSTANTS.get_currency_iso(currency)
+
+        response = self._make_request(
+            url=ENDPOINTS.API_NAR_URI,
+            params={'currencyIsoCode': currency_iso_code},
+        )
+
+        return Utils.parse_mintos_items(response)
+
+    def get_aggregates_overview(self, currency: str) -> dict:
+        """
+        :param currency: Currency of portfolio to get data from
+        :return: Same data returned by get_portfolio_data, but with outstanding principals and pending payments
+        """
+
+        currency_iso_code = CONSTANTS.get_currency_iso(currency)
+
+        response = self._make_request(
+            url=ENDPOINTS.API_AGGREGATES_OVERVIEW_URI,
+            params={'currencyIsoCode': currency_iso_code},
+        )
+
+        return Utils.parse_mintos_items(response)
+
     def get_investments(
             self,
             currency: str,
             quantity: int = 30,
             start_page: int = 1,
-            notes: bool = True,
+            claims: bool = False,
             sort_field: str = 'invested_amount',
             countries: List[str] = None,
             pending_payments: bool = None,
@@ -98,17 +142,17 @@ class API:
         :param currency: Currency that investments are denominated in
         :param quantity: Quantity of investments to get
         :param start_page: Page to start getting investments from (Gets from first page by default)
-        :param notes: Specify whether to get Notes or Claims (True -> Gets notes; False -> Gets claims)
+        :param claims: Specify whether to get Notes or Claims (True -> Gets claims; False -> Gets notes)
         :param sort_field: Field to sort by (
         Notes sort fields:
-        isin -> Sort by Notes' ISIN alphabetically;
+        isin -> Sort by Notes' International Securities Identification Number (ISIN) alphabetically;
         risk_score -> Sort by risk score;
         lending_company -> Sort by lending company alphabetically;
         interest_rate -> Sort by interest rate;
         remaining_term -> Sort by remaining term;
         purchase_date -> Sort by purchase date;
         invested_amount -> Sort by invested amount;
-        outstanding_principal -> Sort by oustanding principal;
+        outstanding_principal -> Sort by outstanding principal;
         finished_date -> Sort by finished date;
         -------------------------------------------------------------------------------------
         Claims sort fields:
@@ -118,7 +162,7 @@ class API:
         remaining_term -> Sort by remaining term;
         purchase_date -> Sort by purchase date;
         invested_amount -> Sort by invested amount;
-        outstanding_principal -> Sort by oustanding principal;
+        outstanding_principal -> Sort by outstanding principal;
         next_payment_date -> Sort by next planned payment date;
         received_payments -> Sort by received payments;
         pending_payments -> Sort by pending payments;
@@ -128,7 +172,7 @@ class API:
         :param pending_payments: If payments for notes should be pending or not
         :param amortization_methods: Amortization type of notes (Full, partial, interest-only, or bullet)
         :param claim_id: ID of claim to filter by
-        :param isin: ISIN of security to filter by
+        :param isin: International Securities Identification Number (ISIN) of security to filter by
         :param late_loan_exposure: Late loan exposure of notes (0_20 for 0-20%, 20_40 for 20-40%, and so on)
         :param lending_companies: Only return notes issued by specified lending companies
         :param lender_statuses: Only return notes from lenders in a certain state (Active, suspended, or in default)
@@ -152,21 +196,32 @@ class API:
 
         currency_iso_code = CONSTANTS.get_currency_iso(currency)
 
-        if notes:
-            if sort_field not in CONSTANTS.NOTES_SORT_FIELDS:
-                raise ValueError(f'{sort_field} not in notes sort fields: {", ".join(CONSTANTS.NOTES_SORT_FIELDS)}.')
-
-            parsed_sort_field = CONSTANTS.NOTES_SORT_FIELDS[sort_field]
-
-        else:
+        if claims:
             if sort_field not in CONSTANTS.CLAIMS_SORT_FIELDS:
                 raise ValueError(f'{sort_field} not in claims sort fields: {", ".join(CONSTANTS.CLAIMS_SORT_FIELDS)}.')
 
             parsed_sort_field = CONSTANTS.CLAIMS_SORT_FIELDS[sort_field]
 
+        else:
+            if sort_field not in CONSTANTS.NOTES_SORT_FIELDS:
+                raise ValueError(f'{sort_field} not in notes sort fields: {", ".join(CONSTANTS.NOTES_SORT_FIELDS)}.')
+
+            parsed_sort_field = CONSTANTS.NOTES_SORT_FIELDS[sort_field]
+
         investment_params = {'currency': currency_iso_code}
 
-        if notes:
+        if claims:
+            extra_data = {
+                'max_results': CONSTANTS.MAX_RESULTS,
+                'sort_field': parsed_sort_field,
+                'sort_order': 'ASC' if ascending_sort else 'DESC',
+                'page': start_page,
+                'format': 'json',
+            }
+
+            investment_params.update(extra_data)
+
+        else:
             extra_data = {
                 'pagination': {
                     'maxResults': CONSTANTS.MAX_RESULTS,
@@ -180,24 +235,13 @@ class API:
 
             investment_params.update(extra_data)
 
-        else:
-            extra_data = {
-                'max_results': CONSTANTS.MAX_RESULTS,
-                'sort_field': parsed_sort_field,
-                'sort_order': 'ASC' if ascending_sort else 'DESC',
-                'page': start_page,
-                'format': 'json',
-            }
-
-            investment_params.update(extra_data)
-
-        if notes:
-            url = f'{ENDPOINTS.API_INVESTMENTS_URI}/{"current" if current else "finished"}'
-
-        else:
+        if claims:
             url = ENDPOINTS.API_CLAIMS_URI
 
             investment_params['status'] = 0 if current else 1
+
+        else:
+            url = f'{ENDPOINTS.API_INVESTMENTS_URI}/{"current" if current else "finished"}'
 
         if start_page < 1:
             raise ValueError('Start page must be superior or equal to 1.')
@@ -277,18 +321,18 @@ class API:
                 investment_params['lateLoanExposures'].append(late_loan_exposure)
 
         if isinstance(pending_payments, bool):
-            if notes:
-                investment_params['hasPendingPayments'] = 1 if pending_payments else 0
-
-            else:
+            if claims:
                 investment_params['pending_payments_status'] = pending_payments
 
+            else:
+                investment_params['hasPendingPayments'] = 1 if pending_payments else 0
+
         if isinstance(listed_for_sale, bool):
-            if notes:
-                investment_params['listedForSale'] = 1 if listed_for_sale else 0
+            if claims:
+                investment_params['listed_for_sale_status'] = listed_for_sale
 
             else:
-                investment_params['listed_for_sale_status'] = listed_for_sale
+                investment_params['listedForSale'] = 1 if listed_for_sale else 0
 
         if isinstance(lender_statuses, list):
             investment_params['lenderStatuses'] = []
@@ -321,7 +365,7 @@ class API:
 
         request_headers = {}
 
-        if not notes:
+        if claims:
             request_headers['content-type'] = 'application/x-www-form-urlencoded'
 
         total_retrieved = 0
@@ -337,40 +381,49 @@ class API:
 
         responses = [response]
 
+        request_args = []
+
         while total_retrieved < quantity:
-            if not response['pagination']['hasNextPage']:
+            if response['pagination']['total'] < total_retrieved:
                 break
+
+            if response.get('errors'):
+                raise MintosException(response['errors'][0])
 
             investment_params['pagination']['page'] += 1
 
-            next_response = self._make_request(
-                url=url,
-                method='POST',
-                headers=request_headers,
-                data=investment_params,
-            )
-
-            responses.append(next_response)
+            request_args.append({
+                'url': ENDPOINTS.API_LOANS_URI,
+                'method': 'POST',
+                'headers': request_headers,
+                'body': copy.deepcopy(investment_params),
+            })
 
             total_retrieved += 300
+
+        responses.extend(self._make_requests(request_args))
 
         items = []
 
         for resp in responses:
-            if notes:
-                items.extend(resp['items'])
-
-            else:
+            if claims and resp.get('data'):
                 items.extend(resp['data'])
+
+            elif resp.get('items'):
+                items.extend(resp['items'])
 
         items = items[0:quantity]
 
         if raw or len(items) == 0:
-            return items
+            return items if raw else pd.DataFrame(items)
 
-        row_index = 'ISIN' if notes else 'id'
+        row_index = 'ID' if claims else 'ISIN'
 
-        return pd.DataFrame.from_records(Utils.parse_investments(items)).set_index(row_index).fillna('N/A')
+        response = pd.DataFrame.from_records(Utils.parse_investments(items)).set_index(row_index).fillna('N/A')
+
+        self._save_cookies()
+
+        return response
 
     def get_investment_filters(self, current: bool = False) -> dict:
         """
@@ -378,10 +431,14 @@ class API:
         :return: Investment filters provided by Mintos
         """
 
-        return self._make_request(
+        response = self._make_request(
             url=ENDPOINTS.API_INVESTMENTS_FILTER_URI,
             params={'status': 0 if current else 1},
         )
+
+        self._save_cookies()
+
+        return response
 
     def get_loans(
             self,
@@ -412,12 +469,12 @@ class API:
             raw: bool = False,
     ) -> Union[pd.DataFrame, List[dict]]:
         """
-        :param currencies: Currenies that investments are denominated in
+        :param currencies: Currencies that investments are denominated in
         :param quantity: Quantity of investments to get
         :param start_page: Page to start getting investments from (Gets from first page by default)
         :param sort_field: Field to sort by (
         Sort fields:
-        isin -> Sort by Notes' ISIN alphabetically;
+        isin -> Sort by Notes' International Securities Identification Number (ISIN) alphabetically;
         risk_score -> Sort by risk score;
         lending_company -> Sort by lending company alphabetically;
         remaining_term -> Sort by remaining term;
@@ -428,7 +485,7 @@ class API:
         :param countries: What countries notes should be issued from
         :param pending_payments: If payments for notes should be pending or not
         :param amortization_methods: Amortization type of notes (Full, partial, interest-only, or bullet)
-        :param isin: ISIN of security to filter by
+        :param isin: International Securities Identification Number (ISIN) of security to filter by
         :param late_loan_exposure: Late loan exposure of notes (0_20 for 0-20%, 20_40 for 20-40%, and so on)
         :param lending_companies: Only return notes issued by specified lending companies
         :param lender_statuses: Only return notes from lenders in a certain state (Active, suspended, or in default)
@@ -580,7 +637,10 @@ class API:
         if isinstance(min_investment_amount, float):
             investment_params['minAmount'] = min_investment_amount
 
-        request_headers = {}
+        request_headers = {
+            'anti-csrf-token': self.__csrf_token,
+            'content-type': 'application/json',
+        }
 
         total_retrieved = 0
 
@@ -595,25 +655,27 @@ class API:
 
         responses = [response]
 
+        request_args = []
+
         while total_retrieved < quantity:
+            if response['pagination']['total'] < total_retrieved:
+                break
+
             if response.get('errors'):
                 raise MintosException(response['errors'][0])
 
-            if not response['pagination']['hasNextPage']:
-                break
-
             investment_params['pagination']['page'] += 1
 
-            next_response = self._make_request(
-                url=ENDPOINTS.API_LOANS_URI,
-                method='POST',
-                headers=request_headers,
-                data=investment_params,
-            )
-
-            responses.append(next_response)
+            request_args.append({
+                'url': ENDPOINTS.API_LOANS_URI,
+                'method': 'POST',
+                'headers': request_headers,
+                'body': copy.deepcopy(investment_params),
+            })
 
             total_retrieved += 300
+
+        responses.extend(self._make_requests(request_args))
 
         items = []
 
@@ -623,9 +685,26 @@ class API:
         items = items[0:quantity]
 
         if raw or len(items) == 0:
-            return items
+            return items if raw else pd.DataFrame(items)
 
-        return pd.DataFrame.from_records(Utils.parse_investments(items)).set_index('ISIN').fillna('N/A')
+        response = pd.DataFrame.from_records(Utils.parse_investments(items)).set_index('ISIN').fillna('N/A')
+
+        self._save_cookies()
+
+        return response
+
+    def get_loan_filters(self) -> dict:
+        """
+        :return: Loan filters provided by Mintos
+        """
+
+        response = self._make_request(
+            url=ENDPOINTS.API_LOANS_FILTER_URI,
+        )
+
+        self._save_cookies()
+
+        return response
 
     def login(self) -> None:
         """
@@ -719,23 +798,13 @@ class API:
             self._wait_for_element(
                 tag='id',
                 locator='header-wrapper',
-                timeout=20,
+                timeout=30,
             )
 
         # Wait 1 second before any further action to avoid Access Denied by Cloudflare
         time.sleep(1)
 
-        with open('cookies.pkl', 'wb') as f:
-            pickle.dump(self.__driver.get_cookies(), f)
-
-    def get_loan_filters(self) -> dict:
-        """
-        :return: Loan filters provided by Mintos
-        """
-
-        return self._make_request(
-            url=ENDPOINTS.API_LOANS_FILTER_URI,
-        )
+        self._save_cookies()
 
     def _save_cookies(self) -> None:
         with open('cookies.pkl', 'wb') as f:
@@ -747,6 +816,45 @@ class API:
         """
 
         return pyotp.TOTP(self.__tfa_secret).now()
+
+    def _make_requests(
+            self,
+            request_args: List[dict],
+    ) -> List[dict]:
+        """
+        Request handler that makes fetch requests directly in the webdriver's console
+        :param request_args: List of request arguments with URL, method, headers, and data
+        :return: HTML response from HTTP request
+        """
+
+        for arg in request_args:
+            if arg['headers'].get('content-type') == 'application/x-www-form-urlencoded':
+                arg['body'] = Utils.dict_to_form_data(arg['body'])
+
+        fetch_script = f'''
+        const requests = {request_args};
+
+        const parsedRequests = requests.map(({{ url, method, headers, body }}) => {{
+            return fetch(
+                url, 
+                {{ 
+                    method: method,
+                    headers: headers,
+                    body: headers['content-type'] == 'application/json' ? JSON.stringify(body) : body,
+                }}
+            );
+        }});
+
+        return await Promise.all(parsedRequests).then(async (res) => {{ 
+            return Promise.all(res.map(async (data) => await data.json()))
+        }})
+        '''
+
+        response = self.__driver.execute_script(fetch_script)
+
+        self._save_cookies()
+
+        return response
 
     def _make_request(
             self,
@@ -773,25 +881,38 @@ class API:
             request_headers.update(headers)
 
         fetch_parameters = {
+            'url': url,
             'method': method,
-            'credentials': 'include',
-            'headers': ast.literal_eval(json.dumps(request_headers)),
+            'headers': request_headers
         }
 
         if isinstance(data, dict):
             if request_headers['content-type'] == 'application/json':
-                fetch_parameters.update({'body': json.dumps(data)})
+                fetch_parameters.update({'body': data})
 
             else:
                 fetch_parameters.update({'body': Utils.dict_to_form_data(data)})
 
         fetch_script = f'''
-        var response = await fetch("{url}", {json.dumps(fetch_parameters)})
+        const {{ url, method, headers, body }} = {fetch_parameters};
 
-        return await response.json()
+        const response = await fetch(
+            url, 
+            {{ 
+                method: method,
+                headers: headers,
+                body: headers['content-type'] == 'application/json' ? JSON.stringify(body) : body,
+            }}
+        );
+
+        return await response.json();
         '''
 
-        return self.__driver.execute_script(fetch_script)
+        response = self.__driver.execute_script(fetch_script)
+
+        self._save_cookies()
+
+        return response
 
     def _wait_for_element(
             self,
@@ -848,7 +969,7 @@ class API:
         options = webdriver.ChromeOptions()
         service = Service(ChromeDriverManager().install())
 
-        # options.add_argument("--headless")
+        options.add_argument("--headless")
         options.add_argument("--window-size=1920,1080")
 
         options.add_argument('--no-sandbox')
@@ -861,34 +982,3 @@ class API:
         for path in paths:
             if os.path.exists(path):
                 os.remove(path)
-
-
-if __name__ == '__main__':
-    t1 = time.time()
-
-    mintos_api = API(
-        email=os.getenv(key='email'),
-        password=os.getenv(key='password'),
-        tfa_secret=os.getenv(key='tfa_secret'),
-    )
-
-    print('Log in duration --->', time.time() - t1)
-
-    t2 = time.time()
-
-    investments = mintos_api.get_investments(
-        currency='EUR',
-        quantity=1300,
-        notes=True,
-        current=True,
-    )
-
-    print(investments)
-
-    loans = mintos_api.get_loans(
-        currencies=['EUR', 'KZT'],
-        countries=['Kazakhstan', 'United Kingdom'],
-        quantity=10000,
-    )
-
-    print(loans)

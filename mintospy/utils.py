@@ -24,6 +24,12 @@ class Utils:
                 if k == 'isin' or k == 'id':
                     new_items[idx][k.upper()] = v
 
+                    continue
+
+                # TODO: Revise logic for handling contracts in claims
+                if k == 'contracts':
+                    continue
+
                 if isinstance(v, dict):
                     if v.get('amount'):
                         new_items[idx][cls.camel_to_snake(k)] = cls._str_to_float(v['amount'])
@@ -42,7 +48,13 @@ class Utils:
 
                     continue
 
-                new_items[idx][cls.camel_to_snake(k)] = v
+                k = cls.camel_to_snake(k)
+
+                if k in {'created_at', 'loan_dt_end', 'next_planned_payment_date'} and isinstance(v, (float, int)):
+                    new_items[idx][k] = datetime.fromtimestamp(v / 1000).date()
+
+                else:
+                    new_items[idx][k] = cls._str_to_float(v)
 
         return new_items
 
@@ -70,6 +82,15 @@ class Utils:
             form_data += f'{k}={v}&'
 
         return form_data[:-1]
+
+    @classmethod
+    def parse_mintos_items(cls, item: dict) -> dict:
+        parsed_item = {}
+
+        for k, v in item.items():
+            parsed_item[cls.camel_to_snake(k)] = cls._str_to_float(v)
+
+        return parsed_item
 
     @classmethod
     def import_cookies(cls, driver: WebDriver, file_path: str) -> bool:
@@ -168,7 +189,7 @@ class Utils:
             return s
 
     @staticmethod
-    def _str_to_float(__str: str) -> object:
+    def _str_to_float(__str: str) -> any:
         try:
             return round(float(__str), 2)
 

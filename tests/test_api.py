@@ -1,5 +1,6 @@
 from mintospy.api import API
 import pandas as pd
+import pytest
 import os
 
 
@@ -15,8 +16,29 @@ mintos_client = API(
 )
 
 
-def test_investments():
-    assert isinstance(mintos_client.get_investments(currency='EUR', quantity=50), pd.DataFrame)
+def test_portfolio():
+    assert isinstance(mintos_client.get_portfolio_data(currency='EUR'), dict)
+
+
+def test_net_annual_return():
+    assert isinstance(mintos_client.get_net_annual_return(currency='EUR'), dict)
+
+
+def test_aggregates_overview():
+    assert isinstance(mintos_client.get_aggregates_overview(currency='EUR'), dict)
+
+
+@pytest.mark.parametrize('current, claims', [(True, True), (True, False), (False, True), (False, False)])
+def test_investments(current: bool, claims: bool):
+    assert isinstance(
+        mintos_client.get_investments(
+            currency='EUR',
+            quantity=200,
+            current=current,
+            claims=claims,
+        ),
+        pd.DataFrame,
+    )
 
 
 def test_investment_filters():
