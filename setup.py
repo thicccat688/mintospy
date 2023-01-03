@@ -81,5 +81,6 @@ setup(
         'webencodings==0.5.1',
         'wsproto==1.2.0',
         'zipp==3.11.0',
+        'undetected-chromedriver==3.2.1',
     ],
 )
