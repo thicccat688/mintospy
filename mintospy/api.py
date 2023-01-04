@@ -746,6 +746,9 @@ class API:
             self.__solver.solve_recaptcha_v2_challenge(iframe=iframe)
 
         except TimeoutException:
+            pass
+
+        finally:
             try:
                 error_message = self.__driver.find_element(by='class name', value='account-login-error').text.strip()
 
@@ -806,6 +809,9 @@ class API:
             self.__solver.solve_recaptcha_v2_challenge(iframe=iframe)
 
         except TimeoutException:
+            pass
+
+        finally:
             try:
                 error_message = self.__driver.find_element(by='class name', value='m-u-color-r4--text').text.strip()
 
