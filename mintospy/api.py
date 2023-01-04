@@ -2,18 +2,15 @@ from mintospy.exceptions import MintosException
 from mintospy.constants import CONSTANTS
 from mintospy.endpoints import ENDPOINTS
 from mintospy.utils import Utils
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.remote.webelement import WebElement
-from selenium.webdriver.chrome.webdriver import WebDriver
 from selenium.common import TimeoutException
-from selenium import webdriver
-from webdriver_manager.chrome import ChromeDriverManager
 from selenium_recaptcha_solver import API as RECAPTCHA_API
 from typing import Union, List
 from datetime import datetime
 from bs4 import BeautifulSoup
+import undetected_chromedriver as webdriver
 import pandas as pd
 import requests
 import warnings
@@ -406,6 +403,9 @@ class API:
         items = []
 
         for resp in responses:
+            if len(resp) == 0:
+                continue
+
             if claims and resp.get('data'):
                 items.extend(resp['data'])
 
@@ -718,8 +718,6 @@ class API:
 
         # If cookies imported are valid, skip the rest of the authentication process
         if valid_import:
-            time.sleep(2)
-
             return
 
         try:
@@ -801,9 +799,6 @@ class API:
                 timeout=30,
             )
 
-        # Wait 1 second before any further action to avoid Access Denied by Cloudflare
-        time.sleep(1)
-
         self._save_cookies()
 
     def _save_cookies(self) -> None:
@@ -824,7 +819,7 @@ class API:
         """
         Request handler that makes fetch requests directly in the webdriver's console
         :param request_args: List of request arguments with URL, method, headers, and data
-        :return: HTML response from HTTP request
+        :return: JSON responses from multiple HTTP requests
         """
 
         for arg in request_args:
@@ -870,7 +865,7 @@ class API:
         :param method: Request method to use (POST, GET, PUT, DELETE)
         :param headers: Headers to send in the HTTP request
         :param params: Query parameters to send in HTTP request (Send as list of tuples for duplicate query strings)
-        :return: HTML response from HTTP request
+        :return: JSON response from fetch request
         """
 
         url = Utils.mount_url(url, params)
@@ -965,17 +960,18 @@ class API:
         self.__driver.execute_script('arguments[0].click();', element)
 
     @staticmethod
-    def _create_driver() -> WebDriver:
+    def _create_driver() -> webdriver.Chrome:
         options = webdriver.ChromeOptions()
-        service = Service(ChromeDriverManager().install())
 
         options.add_argument("--headless")
         options.add_argument("--window-size=1920,1080")
 
+        options.add_argument(f'--user-agent={CONSTANTS.USER_AGENT}')
+
         options.add_argument('--no-sandbox')
         options.add_argument("--disable-extensions")
 
-        return webdriver.Chrome(options=options, service=service)
+        return webdriver.Chrome(options=options)
 
     @staticmethod
     def _cleanup(paths: set) -> None:

@@ -209,6 +209,8 @@ class CONSTANTS:
 
     MAX_RESULTS = 300
 
+    USER_AGENT = 'Mozilla/5.0 (Windows NT 4.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/37.0.2049.0 Safari/537.36'
+
     @classmethod
     def get_currency_iso(cls, currency: str) -> int:
         """
