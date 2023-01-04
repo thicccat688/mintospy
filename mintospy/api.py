@@ -1,3 +1,4 @@
+import selenium.common.exceptions
 from mintospy.exceptions import MintosException
 from mintospy.constants import CONSTANTS
 from mintospy.endpoints import ENDPOINTS
@@ -16,7 +17,6 @@ import requests
 import warnings
 import pickle
 import pyotp
-import time
 import copy
 import os
 
@@ -736,17 +736,6 @@ class API:
 
         self.__driver.find_element(by='xpath', value='//button[@type="submit"]').click()
 
-        if self.__tfa_secret is None:
-            # Wait for overview page to be displayed to mark the end of the login process
-            self._wait_for_element(
-                tag='id',
-                locator='header-wrapper',
-                timeout=20,
-            )
-
-            # Wait 1 second before any further action to avoid Access Denied by Cloudflare
-            time.sleep(1)
-
         try:
             iframe = self._wait_for_element(
                 tag='xpath',
@@ -757,11 +746,36 @@ class API:
             self.__solver.solve_recaptcha_v2_challenge(iframe=iframe)
 
         except TimeoutException:
-            self._wait_for_element(
-                tag='xpath',
-                locator='//label[text()=" 6-digit code "]',
-                timeout=20,
-            )
+            try:
+                error_message = self.__driver.find_element(by='class name', value='account-login-error').text.strip()
+
+                if error_message == 'Invalid username or password':
+                    raise ValueError('Invalid username or password.')
+
+            except selenium.common.exceptions.NoSuchElementException:
+                pass
+
+        if self.__tfa_secret is None:
+            try:
+                # Wait for overview page to be displayed to mark the end of the login process
+                self._wait_for_element(
+                    tag='id',
+                    locator='header-wrapper',
+                    timeout=30,
+                )
+
+            except TimeoutException:
+                raise MintosException('Your account could not be fetched - Check your internet connection.')
+
+            self._save_cookies()
+
+            return
+
+        self._wait_for_element(
+            tag='xpath',
+            locator='//label[text()=" 6-digit code "]',
+            timeout=20,
+        )
 
         self._wait_for_element(
             tag='xpath',
@@ -792,6 +806,15 @@ class API:
             self.__solver.solve_recaptcha_v2_challenge(iframe=iframe)
 
         except TimeoutException:
+            try:
+                error_message = self.__driver.find_element(by='class name', value='m-u-color-r4--text').text.strip()
+
+                if error_message == 'Invalid Two-factor code':
+                    raise ValueError('Invalid TFA secret.')
+
+            except selenium.common.exceptions.NoSuchElementException:
+                pass
+
             # Wait for overview page to be displayed to mark the end of the login process
             self._wait_for_element(
                 tag='id',
