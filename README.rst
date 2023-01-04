@@ -24,7 +24,8 @@ Installation
     $ python -m pip install mintospy
 
 This scraper uses audio transcription to automatically solve ReCAPTCHA challenges,
-so you need to have FFmpeg installed on your machine and in your PATH.
+so you need to have FFmpeg installed on your machine and in your PATH (If using windows) 
+or installed on your machine (For Linux or MacOS).
 
 - Guide for installing FFmpeg on Windows: https://phoenixnap.com/kb/ffmpeg-windows
 - Guide for installing FFmpeg on Linux: https://www.tecmint.com/install-ffmpeg-in-linux/
