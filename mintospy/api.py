@@ -8,6 +8,7 @@ from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.common import TimeoutException
 from selenium_recaptcha_solver import API as RECAPTCHA_API
+from selenium_stealth import stealth
 from typing import Union, List
 from datetime import datetime
 from bs4 import BeautifulSoup
@@ -1029,7 +1030,19 @@ class API:
         options.add_argument('--no-sandbox')
         options.add_argument("--disable-extensions")
 
-        return webdriver.Chrome(options=options)
+        driver = webdriver.Chrome(options=options)
+
+        stealth(
+            driver,
+            languages=["en-US", "en"],
+            vendor="Google Inc.",
+            platform="Win32",
+            webgl_vendor="Intel Inc.",
+            renderer="Intel Iris OpenGL Engine",
+            fix_hairline=True,
+        )
+
+        return driver
 
     @staticmethod
     def _cleanup(paths: set) -> None:
