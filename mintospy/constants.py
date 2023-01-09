@@ -1,3 +1,4 @@
+from mintospy.endpoints import ENDPOINTS
 import requests
 
 
@@ -104,7 +105,7 @@ class CONSTANTS:
         """
 
         if CONSTANTS.CURRENCIES is None:
-            raw_countries = requests.get('https://www.mintos.com/webapp/api/marketplace-api/v1/currencies').json()
+            raw_countries = requests.get(ENDPOINTS.API_CURRENCIES_URI).json()
 
             CONSTANTS.CURRENCIES = dict(
                 map(lambda data: (data['abbreviation'], data['isoCode']), raw_countries['items'])
@@ -124,7 +125,7 @@ class CONSTANTS:
         """
 
         if CONSTANTS.COUNTRIES is None:
-            raw_countries = requests.get('https://www.mintos.com/webapp/api/marketplace-api/v1/countries').json()
+            raw_countries = requests.get(ENDPOINTS.API_COUNTRIES_URI).json()
 
             CONSTANTS.COUNTRIES = dict(map(lambda data: (data['name'], data['id']), raw_countries['countries']))
 
@@ -142,7 +143,7 @@ class CONSTANTS:
         """
 
         if CONSTANTS.LENDING_COMPANIES is None:
-            raw_countries = requests.get('https://www.mintos.com/webapp/api/marketplace-api/v1/lender-companies').json()
+            raw_countries = requests.get(ENDPOINTS.API_LENDING_COMPANIES_URI).json()
 
             CONSTANTS.LENDING_COMPANIES = dict(
                 map(lambda data: (data['lenderGroupName'], data['lenderGroupId']), raw_countries)
