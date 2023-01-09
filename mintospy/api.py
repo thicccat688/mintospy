@@ -722,7 +722,7 @@ class API:
 
         return response if raw else pd.DataFrame(response).set_index('identifier')
 
-    def get_claim_details(self, claim_id: str) -> List[dict]:
+    def get_claim_details(self, claim_id: str) -> dict:
         """
         :param claim_id: ID of claim
         :return: Claim details provided by Mintos
