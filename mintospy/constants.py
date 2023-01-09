@@ -1,19 +1,8 @@
+import requests
+
+
 class CONSTANTS:
-    # Retrieved from currencies endpoint (https://www.mintos.com/webapp/api/marketplace-api/v1/currencies)
-    CURRENCIES = {
-        'PLN': 985,
-        'GEL': 981,
-        'EUR': 978,
-        'RON': 946,
-        'USD': 840,
-        'GBP': 826,
-        'SEK': 752,
-        'RUB': 643,
-        'MXN': 484,
-        'KZT': 398,
-        'DKK': 208,
-        'CZK': 203,
-    }
+    COUNTRIES, LENDING_COMPANIES, CURRENCIES = None, None, None
 
     CURRENCY_SYMBOLS = {
         'zł': 'PLN',
@@ -27,111 +16,6 @@ class CONSTANTS:
         '₸': 'KZT',
         'Kr.': 'DKK',
         'Kč': 'CZK',
-    }
-
-    COUNTRIES = {
-        'Namibia': 249,
-        'Turkey': 247,
-        'Mongolia': 236,
-        'Bosnia and Herzegovina': 209,
-        'Uganda': 179,
-        'Uzbekistan': 169,
-        'Kosovo': 98,
-        'Armenia': 94,
-        'Colombia': 93,
-        'Zambia': 90,
-        'Kenya': 87,
-        'Moldova': 85,
-        'Botswana': 84,
-        'Albania': 83,
-        'Belarus': 81,
-        'Mexico': 79,
-        'North Macedonia': 75,
-        'Vietnam': 71,
-        'Indonesia': 69,
-        'Ukraine': 65,
-        'Philippines': 61,
-        'Georgia': 53,
-        'South Africa': 51,
-        'Kazakhstan': 50,
-        'United Kingdom': 45,
-        'Sweden': 44,
-        'Spain': 43,
-        'Russian Federation': 40,
-        'Romania': 39,
-        'Poland': 37,
-        'France': 28,
-        'Finland': 27,
-        'Denmark': 26,
-        'Czech Republic': 25,
-        'Bulgaria': 22,
-        'Lithuania': 19,
-        'Latvia': 17,
-        'Estonia': 8,
-    }
-
-    LENDING_COMPANIES = {
-        'Financiera Contigo': 119,
-        'Credifiel': 118,
-        'Planet42': 117,
-        'Conmigo Vales': 114,
-        'CAPEM': 113,
-        'GoCredit': 112,
-        'Alivio Capital': 111,
-        'Jet Finance': 110,
-        'Fenchurch Legal': 109,
-        'Finclusion': 107,
-        'Swell': 106,
-        'Revo Technology': 105,
-        'IDF EURASIA': 102,
-        'DelfinGroup': 101,
-        'GFM': 96,
-        'DanaRupiah': 93,
-        'Creditter': 92,
-        'Finko': 91,
-        'Wowwo': 88,
-        'Dinerito': 87,
-        'Evergreen Finance': 85,
-        'Zenka': 82,
-        'E Cash': 81,
-        'Everest Finanse': 80,
-        'ESTO': 79,
-        'Sun Finance': 78,
-        'Dziesiatka Finanse': 77,
-        'Alexcredit': 76,
-        'SOS Credit': 75,
-        'Mikro Kapital': 71,
-        'Novaloans': 70,
-        'Monego': 68,
-        'Dineo Credito': 67,
-        'Cashwagon': 62,
-        'LF TECH': 61,
-        'Credius': 58,
-        'Fireof': 54,
-        'Lime Zaim': 53,
-        'Placet Group': 52,
-        'Dozarplati': 47,
-        'Kviku': 46,
-        'ExpressCredit': 44,
-        'Credissimo': 42,
-        'Rapicredit': 40,
-        'EcoFinance': 32,
-        'Watu Credit': 31,
-        'Rapido Finance': 30,
-        'CashCredit': 29,
-        'GetBucks': 26,
-        'IuteCredit': 25,
-        'ID Finance': 23,
-        'Capital Service': 22,
-        'Mozipo Group': 21,
-        'Eurocent': 20,
-        'Extra Finance': 17,
-        'Creditstar': 11,
-        'Debifo': 6,
-        'Creamfinance': 4,
-        'Capitalia': 3,
-        'Eleving Group': 2,
-        'Hipocredit': 1,
     }
 
     AMORTIZATION_METHODS = {
@@ -219,6 +103,13 @@ class CONSTANTS:
         :raises ValueError: If currency isn't included in Mintos' accepted currencies
         """
 
+        if CONSTANTS.CURRENCIES is None:
+            raw_countries = requests.get('https://www.mintos.com/webapp/api/marketplace-api/v1/currencies').json()
+
+            CONSTANTS.CURRENCIES = dict(
+                map(lambda data: (data['abbreviation'], data['isoCode']), raw_countries['items'])
+            )
+
         if currency not in cls.CURRENCIES:
             raise ValueError(f'Currency must be one of the following: {", ".join(cls.CURRENCIES)}')
 
@@ -232,6 +123,11 @@ class CONSTANTS:
         :raises ValueError: If country isn't included in Mintos' accepted countries
         """
 
+        if CONSTANTS.COUNTRIES is None:
+            raw_countries = requests.get('https://www.mintos.com/webapp/api/marketplace-api/v1/countries').json()
+
+            CONSTANTS.COUNTRIES = dict(map(lambda data: (data['name'], data['id']), raw_countries['countries']))
+
         if country not in cls.COUNTRIES:
             raise ValueError(f'Country must be one of the following: {", ".join(cls.COUNTRIES)}')
 
@@ -244,6 +140,13 @@ class CONSTANTS:
         :return: Lending company ID of specified lender
         :raises ValueError: If lending company isn't included in Mintos' current lending companies
         """
+
+        if CONSTANTS.LENDING_COMPANIES is None:
+            raw_countries = requests.get('https://www.mintos.com/webapp/api/marketplace-api/v1/lender-companies').json()
+
+            CONSTANTS.LENDING_COMPANIES = dict(
+                map(lambda data: (data['lenderGroupName'], data['lenderGroupId']), raw_countries)
+            )
 
         if lender not in CONSTANTS.LENDING_COMPANIES:
             raise ValueError(f'Lending company must be one of the following: {", ".join(CONSTANTS.LENDING_COMPANIES)}')

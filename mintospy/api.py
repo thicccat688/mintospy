@@ -706,6 +706,35 @@ class API:
 
         return response
 
+    def get_note_details(self, isin: str, raw: bool = False) -> List[dict]:
+        """
+        :param isin: ISIN of note
+        :param raw: Return raw details in JSON if set to True, or returns pandas dataframe of details if set to False
+        :return: Note details provided by Mintos
+        """
+
+        response = self._make_request(url=f'{ENDPOINTS.API_NOTES_DETAILS_URI}/{isin}/loans')
+
+        if response is None:
+            raise ValueError(f'Could not get details for Note with ID of {isin}.')
+
+        response = list(map(lambda item: Utils.parse_mintos_items(item), response.get('items')))
+
+        return response if raw else pd.DataFrame(response).set_index('identifier')
+
+    def get_claim_details(self, claim_id: str) -> List[dict]:
+        """
+        :param claim_id: ID of claim
+        :return: Claim details provided by Mintos
+        """
+
+        response = self._make_request(url=f'{ENDPOINTS.API_CLAIMS_DETAILS_URI}/{claim_id}/summary')
+
+        if response is None:
+            raise ValueError(f'Could not get details for Claim with ID of {claim_id}.')
+
+        return Utils.parse_mintos_items(response)
+
     def login(self) -> None:
         """
         Logs in to Mintos Marketplace via headless Chromium browser
