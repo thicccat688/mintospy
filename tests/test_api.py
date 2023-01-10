@@ -48,6 +48,8 @@ def test_investment_filters():
 def test_loans():
     assert isinstance(mintos_client.get_loans(currencies=['EUR', 'KZT']), pd.DataFrame)
 
+    assert isinstance(mintos_client.get_loans(currencies=['EUR', 'KZT'], secondary_market=True), pd.DataFrame)
+
 
 def test_loan_filters():
     assert isinstance(mintos_client.get_loan_filters(), dict)

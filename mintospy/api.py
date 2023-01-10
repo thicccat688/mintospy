@@ -447,6 +447,7 @@ class API:
             quantity: int = 30,
             start_page: int = 1,
             sort_field: str = 'interest_rate',
+            secondary_market: bool = False,
             countries: List[str] = None,
             pending_payments: bool = None,
             amortization_methods: List[str] = None,
@@ -483,6 +484,7 @@ class API:
         interest_rate -> Sort by interest rate;
         available_for_investment -> Sort by amount available for investment;
         )
+        :param secondary_market: If True, loans will be retrieved from the secondary market, else from the primary
         :param countries: What countries notes should be issued from
         :param pending_payments: If payments for notes should be pending or not
         :param amortization_methods: Amortization type of notes (Full, partial, interest-only, or bullet)
@@ -646,7 +648,7 @@ class API:
         total_retrieved = 0
 
         response = self._make_request(
-            url=ENDPOINTS.API_LOANS_URI,
+            url=f'{ENDPOINTS.API_LOANS_URI}/{"secondary" if secondary_market else "primary"}',
             method='POST',
             headers=request_headers,
             data=investment_params,
@@ -668,7 +670,7 @@ class API:
             investment_params['pagination']['page'] += 1
 
             request_args.append({
-                'url': ENDPOINTS.API_LOANS_URI,
+                'url': f'{ENDPOINTS.API_LOANS_URI}/{"secondary" if secondary_market else "primary"}',
                 'method': 'POST',
                 'headers': request_headers,
                 'body': copy.deepcopy(investment_params),

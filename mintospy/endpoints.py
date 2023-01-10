@@ -27,7 +27,7 @@ class ENDPOINTS:
 
     API_CLAIMS_DETAILS_URI = f'{BASE_URI}/en/webapp-api/loans'
 
-    API_LOANS_URI = f'{BASE_URI}/marketplace-api/v1/note-series/primary'
+    API_LOANS_URI = f'{BASE_URI}/marketplace-api/v1/note-series'
 
     API_LOANS_FILTER_URI = f'{BASE_URI}/en/webapp-api/market/primary/filters'
 
