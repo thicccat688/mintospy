@@ -13,7 +13,8 @@ Features
 
 - Get portfolio data (Active funds, late funds, etc).
 - Get Notes and Claims that you've invested in, with support for pagination and Mintos' filters.
-- Get Notes that are listed on the Mintos marketplace, with support for pagination and Mintos' filters.
+- Get Notes that are listed on the Mintos primary and secondary marketplace, with support for pagination and Mintos' filters.
+- Get details provided by Mintos on Notes and Claims.
 - Returns Notes/Claims data in an easy-to-use Pandas DataFrame.
 - Allows option to get raw data in JSON, instead of the parsed data in the Pandas DataFrame.
 
@@ -53,8 +54,11 @@ Usage
     # Gets 300 of the EUR (€) denominated notes from your "Finished investments" section
     print(api_client.get_investments(currency='EUR', quantity=300, claims=True))
 
-    # Gets 400 KZT (₸) denominated notes available in the marketplace for investment
+    # Gets 400 KZT (₸) denominated notes available in the primary marketplace for investment
     print(api_client.get_loans(currency='KZT', quantity=400))
+    
+    # Gets 400 KZT (₸) denominated notes available in the secondary marketplace for investment
+    print(api_client.get_loans(currency='KZT', quantity=400, secondary_market=True))
 
 How it works
 ----
