@@ -26,11 +26,13 @@ Installation
 
 This scraper uses audio transcription to automatically solve ReCAPTCHA challenges,
 so you need to have FFmpeg installed on your machine and in your PATH (If using windows) 
-or installed on your machine (For Linux or MacOS).
+or just installed on your machine (For Linux or MacOS).
 
 - Guide for installing FFmpeg on Windows: https://phoenixnap.com/kb/ffmpeg-windows
 - Guide for installing FFmpeg on Linux: https://www.tecmint.com/install-ffmpeg-in-linux/
 - Guide for installing FFmpeg on MacOS: https://phoenixnap.com/kb/ffmpeg-mac
+
+Link to project used to solve ReCAPTCHA challenges: https://github.com/thicccat688/selenium-recaptcha-solver
 
 Usage
 ----
