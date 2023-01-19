@@ -8,8 +8,6 @@ so make sure you only utilise this project for personal use.
 
 Mintos platform: https://www.mintos.com/en/
 
-Disclaimer: As of 11/01/2023, Mintos has added even more anti-scraping measures to their website, hence the scraper may fail more often (Should still work for most cases, however). I'm actively looking into a solution to make this scraper more reliable, so if you have any recommendations, please reach out.
-
 Features
 ----
 
