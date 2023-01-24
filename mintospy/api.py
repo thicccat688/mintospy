@@ -27,13 +27,15 @@ class API:
             self,
             email: str,
             password: str,
-            tfa_secret: str = None
+            tfa_secret: str = None,
+            save_cookies: bool = True,
     ):
         """
         Mintos API wrapper with all relevant Mintos functionalities.
         :param email: Account's email
         :param password: Account's password
         :param tfa_secret: Base32 secret used for two-factor authentication
+        :param save_cookies: Set to false if you don't want your cookies to be saved locally for faster login
         (Only mandatory if account has two-factor authentication enabled)
         """
 
@@ -50,14 +52,20 @@ class API:
         self.__password = password
         self.__tfa_secret = tfa_secret
 
+        self.should_save = save_cookies
+
         # Initialise web driver session
         self.__driver = self._create_driver()
 
         # Initialise RecaptchaV2 solver object
         self.__solver = RECAPTCHA_API(driver=self.__driver)
 
-        # Automatically authenticate to Mintos API upon API object initialization
-        self.login()
+        try:
+            # Automatically authenticate to Mintos API upon API object initialization
+            self.login()
+
+        except TimeoutException:
+            raise MintosException('Check your network connection.')
 
         self.__csrf_token = self._get_csrf_token()
 
@@ -422,7 +430,8 @@ class API:
 
         response = pd.DataFrame.from_records(Utils.parse_investments(items)).set_index(row_index).fillna('N/A')
 
-        self._save_cookies()
+        if self.should_save:
+            self._save_cookies()
 
         return response
 
@@ -437,7 +446,8 @@ class API:
             params={'status': 0 if current else 1},
         )
 
-        self._save_cookies()
+        if self.should_save:
+            self._save_cookies()
 
         return response
 
@@ -692,7 +702,8 @@ class API:
 
         response = pd.DataFrame.from_records(Utils.parse_investments(items)).set_index('ISIN').fillna('N/A')
 
-        self._save_cookies()
+        if self.should_save:
+            self._save_cookies()
 
         return response
 
@@ -705,7 +716,8 @@ class API:
             url=ENDPOINTS.API_LOANS_FILTER_URI,
         )
 
-        self._save_cookies()
+        if self.should_save:
+            self._save_cookies()
 
         return response
 
@@ -802,7 +814,8 @@ class API:
             except TimeoutException:
                 raise MintosException('Your account could not be fetched - Check your internet connection.')
 
-            self._save_cookies()
+            if self.should_save:
+                self._save_cookies()
 
             return
 
@@ -860,7 +873,8 @@ class API:
                 timeout=30,
             )
 
-        self._save_cookies()
+        if self.should_save:
+            self._save_cookies()
 
     def _save_cookies(self) -> None:
         with open('cookies.pkl', 'wb') as f:
@@ -908,7 +922,8 @@ class API:
 
         response = self.__driver.execute_script(fetch_script)
 
-        self._save_cookies()
+        if self.should_save:
+            self._save_cookies()
 
         return response
 
@@ -966,7 +981,8 @@ class API:
 
         response = self.__driver.execute_script(fetch_script)
 
-        self._save_cookies()
+        if self.should_save:
+            self._save_cookies()
 
         return response
 
