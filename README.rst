@@ -40,7 +40,6 @@ Usage
 
     from mintospy import API
 
-    # Authenticate to the API client (You won't need to manually authenticate again after this)
     mintos_api = API(
       email='YOUR EMAIL HERE',
       password='YOUR PASSWORD HERE',
@@ -48,19 +47,19 @@ Usage
     )
     
     # Gets data for EUR (€) portfolio
-    print(api_client.get_portfolio_data(currency='EUR'))
+    print(mintos_api.get_portfolio_data(currency='EUR'))
 
     # Gets 200 of the EUR (€) denominated notes from your "Current investments" section
-    print(api_client.get_investments(currency='EUR', quantity=200))
+    print(mintos_api.get_investments(currency='EUR', quantity=200))
 
     # Gets 300 of the EUR (€) denominated notes from your "Finished investments" section
-    print(api_client.get_investments(currency='EUR', quantity=300, claims=True))
+    print(mintos_api.get_investments(currency='EUR', quantity=300, claims=True))
 
     # Gets 400 KZT (₸) denominated notes available in the primary marketplace for investment
-    print(api_client.get_loans(currency='KZT', quantity=400))
+    print(mintos_api.get_loans(currency='KZT', quantity=400))
     
     # Gets 400 KZT (₸) denominated notes available in the secondary marketplace for investment
-    print(api_client.get_loans(currency='KZT', quantity=400, secondary_market=True))
+    print(mintos_api.get_loans(currency='KZT', quantity=400, secondary_market=True))
 
 How it works
 ----
