@@ -13,7 +13,8 @@ Features
 
 - Get portfolio data (Active funds, late funds, etc).
 - Get Notes and Claims that you've invested in, with support for pagination and Mintos' filters.
-- Get Notes that are listed on the Mintos marketplace, with support for pagination and Mintos' filters.
+- Get Notes that are listed on the Mintos primary and secondary marketplace, with support for pagination and Mintos' filters.
+- Get details provided by Mintos on Notes and Claims.
 - Returns Notes/Claims data in an easy-to-use Pandas DataFrame.
 - Allows option to get raw data in JSON, instead of the parsed data in the Pandas DataFrame.
 
@@ -25,11 +26,13 @@ Installation
 
 This scraper uses audio transcription to automatically solve ReCAPTCHA challenges,
 so you need to have FFmpeg installed on your machine and in your PATH (If using windows) 
-or installed on your machine (For Linux or MacOS).
+or just installed on your machine (For Linux or MacOS).
 
 - Guide for installing FFmpeg on Windows: https://phoenixnap.com/kb/ffmpeg-windows
 - Guide for installing FFmpeg on Linux: https://www.tecmint.com/install-ffmpeg-in-linux/
 - Guide for installing FFmpeg on MacOS: https://phoenixnap.com/kb/ffmpeg-mac
+
+Link to project used to solve ReCAPTCHA challenges: https://github.com/thicccat688/selenium-recaptcha-solver
 
 Usage
 ----
@@ -37,7 +40,6 @@ Usage
 
     from mintospy import API
 
-    # Authenticate to the API client (You won't need to manually authenticate again after this)
     mintos_api = API(
       email='YOUR EMAIL HERE',
       password='YOUR PASSWORD HERE',
@@ -45,16 +47,19 @@ Usage
     )
     
     # Gets data for EUR (€) portfolio
-    print(api_client.get_portfolio_data(currency='EUR'))
+    print(mintos_api.get_portfolio_data(currency='EUR'))
 
     # Gets 200 of the EUR (€) denominated notes from your "Current investments" section
-    print(api_client.get_investments(currency='EUR', quantity=200))
+    print(mintos_api.get_investments(currency='EUR', quantity=200))
 
     # Gets 300 of the EUR (€) denominated notes from your "Finished investments" section
-    print(api_client.get_investments(currency='EUR', quantity=300, claims=True))
+    print(mintos_api.get_investments(currency='EUR', quantity=300, claims=True))
 
-    # Gets 400 KZT (₸) denominated notes available in the marketplace for investment
-    print(api_client.get_loans(currency='KZT', quantity=400))
+    # Gets 400 KZT (₸) denominated notes available in the primary marketplace for investment
+    print(mintos_api.get_loans(currency='KZT', quantity=400))
+    
+    # Gets 400 KZT (₸) denominated notes available in the secondary marketplace for investment
+    print(mintos_api.get_loans(currency='KZT', quantity=400, secondary_market=True))
 
 How it works
 ----
