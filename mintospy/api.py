@@ -1,4 +1,3 @@
-import selenium.common.exceptions
 from mintospy.exceptions import MintosException
 from mintospy.constants import CONSTANTS
 from mintospy.endpoints import ENDPOINTS
@@ -12,7 +11,8 @@ from selenium_stealth import stealth
 from typing import Union, List
 from datetime import datetime
 from bs4 import BeautifulSoup
-import undetected_chromedriver as webdriver
+from selenium import webdriver
+import selenium.common.exceptions
 import pandas as pd
 import requests
 import warnings
@@ -28,6 +28,7 @@ class API:
             email: str,
             password: str,
             tfa_secret: str = None,
+            google_api_key: str = None,
             save_cookies: bool = True,
     ):
         """
@@ -35,6 +36,7 @@ class API:
         :param email: Account's email
         :param password: Account's password
         :param tfa_secret: Base32 secret used for two-factor authentication
+        :param google_api_key: API key for Speech Recognition API (Optional, if not sent will use default key)
         :param save_cookies: Set to false if you don't want your cookies to be saved locally for faster login
         (Only mandatory if account has two-factor authentication enabled)
         """
@@ -49,16 +51,16 @@ class API:
             warnings.warn('Using two-factor authentication with your Mintos account is highly recommended.')
 
         self.email = email
-        self.__password = password
-        self.__tfa_secret = tfa_secret
+        self.password = password
+        self.tfa_secret = tfa_secret
 
         self.should_save = save_cookies
 
         # Initialise web driver session
-        self.__driver = self._create_driver()
+        self.driver = self._create_driver()
 
         # Initialise RecaptchaV2 solver object
-        self.__solver = RECAPTCHA_API(driver=self.__driver)
+        self.solver = RECAPTCHA_API(driver=self.driver, google_api_key=google_api_key)
 
         try:
             # Automatically authenticate to Mintos API upon API object initialization
@@ -67,7 +69,7 @@ class API:
         except TimeoutException:
             raise MintosException('Check your network connection.')
 
-        self.__csrf_token = self._get_csrf_token()
+        self.csrf_token = self._get_csrf_token()
 
     def get_portfolio_data(self, currency: str) -> dict:
         """
@@ -651,7 +653,7 @@ class API:
             investment_params['minAmount'] = min_investment_amount
 
         request_headers = {
-            'anti-csrf-token': self.__csrf_token,
+            'anti-csrf-token': self.csrf_token,
             'content-type': 'application/json',
         }
 
@@ -755,10 +757,10 @@ class API:
         Logs in to Mintos Marketplace via headless Chromium browser
         """
 
-        self.__driver.get(ENDPOINTS.LOGIN_URI)
+        self.driver.get(ENDPOINTS.LOGIN_URI)
 
         # Import cookies to web driver with the required validations and stop login process if they're valid
-        valid_import = Utils.import_cookies(driver=self.__driver, file_path='cookies.pkl')
+        valid_import = Utils.import_cookies(driver=self.driver, file_path=f'{self.email}_cookies.pkl')
 
         # If cookies imported are valid, skip the rest of the authentication process
         if valid_import:
@@ -776,9 +778,9 @@ class API:
 
             raise MintosException("Mintos' system is currently being updated. Try again later.")
 
-        self.__driver.find_element(by='id', value='login-password').send_keys(self.__password)
+        self.driver.find_element(by='id', value='login-password').send_keys(self.password)
 
-        self.__driver.find_element(by='xpath', value='//button[@type="submit"]').click()
+        self.driver.find_element(by='xpath', value='//button[@type="submit"]').click()
 
         try:
             iframe = self._wait_for_element(
@@ -787,14 +789,14 @@ class API:
                 timeout=2,
             )
 
-            self.__solver.solve_recaptcha_v2_challenge(iframe=iframe)
+            self.solver.solve_recaptcha_v2_challenge(iframe=iframe)
 
         except TimeoutException:
             pass
 
         finally:
             try:
-                error_message = self.__driver.find_element(by='class name', value='account-login-error').text.strip()
+                error_message = self.driver.find_element(by='class name', value='account-login-error').text.strip()
 
                 if error_message == 'Invalid username or password':
                     raise ValueError('Invalid username or password.')
@@ -802,7 +804,7 @@ class API:
             except selenium.common.exceptions.NoSuchElementException:
                 pass
 
-        if self.__tfa_secret is None:
+        if self.tfa_secret is None:
             try:
                 # Wait for overview page to be displayed to mark the end of the login process
                 self._wait_for_element(
@@ -837,7 +839,7 @@ class API:
             timeout=5,
         ).send_keys(self._gen_totp())
 
-        self.__driver.find_element(
+        self.driver.find_element(
             by='xpath',
             value='//button[@type="submit"]',
         ).click()
@@ -851,14 +853,14 @@ class API:
                 timeout=2,
             )
 
-            self.__solver.solve_recaptcha_v2_challenge(iframe=iframe)
+            self.solver.solve_recaptcha_v2_challenge(iframe=iframe)
 
         except TimeoutException:
             pass
 
         finally:
             try:
-                error_message = self.__driver.find_element(by='class name', value='m-u-color-r4--text').text.strip()
+                error_message = self.driver.find_element(by='class name', value='m-u-color-r4--text').text.strip()
 
                 if error_message == 'Invalid Two-factor code':
                     raise ValueError('Invalid TFA secret.')
@@ -877,15 +879,15 @@ class API:
             self._save_cookies()
 
     def _save_cookies(self) -> None:
-        with open('cookies.pkl', 'wb') as f:
-            pickle.dump(self.__driver.get_cookies(), f)
+        with open(f'{self.email}_cookies.pkl', 'wb') as f:
+            pickle.dump(self.driver.get_cookies(), f)
 
     def _gen_totp(self) -> str:
         """
         :return: TOTP used for Mintos TFA
         """
 
-        return pyotp.TOTP(self.__tfa_secret).now()
+        return pyotp.TOTP(self.tfa_secret).now()
 
     def _make_requests(
             self,
@@ -920,7 +922,7 @@ class API:
         }})
         '''
 
-        response = self.__driver.execute_script(fetch_script)
+        response = self.driver.execute_script(fetch_script)
 
         if self.should_save:
             self._save_cookies()
@@ -946,7 +948,7 @@ class API:
 
         url = Utils.mount_url(url, params)
 
-        request_headers = {'anti-csrf-token': self.__csrf_token, 'content-type': 'application/json'}
+        request_headers = {'anti-csrf-token': self.csrf_token, 'content-type': 'application/json'}
 
         if isinstance(headers, dict):
             request_headers.update(headers)
@@ -979,7 +981,7 @@ class API:
         return await response.json();
         '''
 
-        response = self.__driver.execute_script(fetch_script)
+        response = self.driver.execute_script(fetch_script)
 
         if self.should_save:
             self._save_cookies()
@@ -1004,17 +1006,17 @@ class API:
 
         element_attributes = (tag, locator)
 
-        WebDriverWait(self.__driver, timeout).until(ec.visibility_of_element_located(element_attributes))
+        WebDriverWait(self.driver, timeout).until(ec.visibility_of_element_located(element_attributes))
 
         if multiple:
-            return self.__driver.find_elements(by=tag, value=locator)
+            return self.driver.find_elements(by=tag, value=locator)
 
-        return self.__driver.find_element(by=tag, value=locator)
+        return self.driver.find_element(by=tag, value=locator)
 
     def _get_csrf_token(self) -> str:
         s = requests.Session()
 
-        for cookie in self.__driver.get_cookies():
+        for cookie in self.driver.get_cookies():
             s.cookies.set(cookie['name'], cookie['value'])
 
         content = s.get(ENDPOINTS.WEB_APP_URI).text
@@ -1034,10 +1036,10 @@ class API:
         :param element: Web element to perform click on via JavaScript
         """
 
-        self.__driver.execute_script('arguments[0].click();', element)
+        self.driver.execute_script('arguments[0].click();', element)
 
     @staticmethod
-    def _create_driver() -> webdriver.Chrome:
+    def _create_driver() -> webdriver:
         options = webdriver.ChromeOptions()
 
         options.add_argument("--headless")

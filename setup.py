@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='mintospy',
-    version='0.2.0',
+    version='0.2.2',
     license='MIT',
     author='Tomás Perestrelo',
     author_email='tomasperestrelo21@gmail.com',
@@ -80,7 +80,6 @@ setup(
         'webencodings==0.5.1',
         'wsproto==1.2.0',
         'zipp==3.11.0',
-        'undetected-chromedriver==3.2.1',
         'selenium-stealth==1.0.6',
     ],
 )
