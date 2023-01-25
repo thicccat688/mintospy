@@ -97,6 +97,49 @@ class CONSTANTS:
     USER_AGENT = 'Mozilla/5.0 (Windows NT 4.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/37.0.2049.0 Safari/537.36'
 
     @classmethod
+    def get_currencies(cls) -> dict:
+        """
+        :return: Currencies available on Mintos
+        """
+
+        if cls.CURRENCIES is None:
+            raw_countries = requests.get(ENDPOINTS.API_CURRENCIES_URI).json()
+
+            cls.CURRENCIES = dict(
+                map(lambda data: (data['abbreviation'], data['isoCode']), raw_countries['items'])
+            )
+
+        return cls.CURRENCIES
+
+    @classmethod
+    def get_countries(cls):
+        """
+        :return: Countries available on Mintos
+        """
+
+        if cls.COUNTRIES is None:
+            raw_countries = requests.get(ENDPOINTS.API_COUNTRIES_URI).json()
+
+            cls.COUNTRIES = dict(map(lambda data: (data['name'], data['id']), raw_countries['countries']))
+
+        return cls.COUNTRIES
+
+    @classmethod
+    def get_lending_companies(cls) -> dict:
+        """
+        :return: Lending companies available on Mintos
+        """
+
+        if cls.LENDING_COMPANIES is None:
+            raw_countries = requests.get(ENDPOINTS.API_LENDING_COMPANIES_URI).json()
+
+            cls.LENDING_COMPANIES = dict(
+                map(lambda data: (data['lenderGroupName'], data['lenderGroupId']), raw_countries)
+            )
+
+        return cls.LENDING_COMPANIES
+
+    @classmethod
     def get_currency_iso(cls, currency: str) -> int:
         """
         :param currency: Currency to validate and get ISO code of
@@ -104,12 +147,7 @@ class CONSTANTS:
         :raises ValueError: If currency isn't included in Mintos' accepted currencies
         """
 
-        if CONSTANTS.CURRENCIES is None:
-            raw_countries = requests.get(ENDPOINTS.API_CURRENCIES_URI).json()
-
-            CONSTANTS.CURRENCIES = dict(
-                map(lambda data: (data['abbreviation'], data['isoCode']), raw_countries['items'])
-            )
+        if cls.CURRENCIES is None: cls.get_currencies()
 
         if currency not in cls.CURRENCIES:
             raise ValueError(f'Currency must be one of the following: {", ".join(cls.CURRENCIES)}')
@@ -124,18 +162,15 @@ class CONSTANTS:
         :raises ValueError: If country isn't included in Mintos' accepted countries
         """
 
-        if CONSTANTS.COUNTRIES is None:
-            raw_countries = requests.get(ENDPOINTS.API_COUNTRIES_URI).json()
-
-            CONSTANTS.COUNTRIES = dict(map(lambda data: (data['name'], data['id']), raw_countries['countries']))
+        if CONSTANTS.COUNTRIES is None: cls.get_countries()
 
         if country not in cls.COUNTRIES:
             raise ValueError(f'Country must be one of the following: {", ".join(cls.COUNTRIES)}')
 
         return CONSTANTS.COUNTRIES[country]
 
-    @staticmethod
-    def get_lending_company_id(lender: str) -> int:
+    @classmethod
+    def get_lending_company_id(cls, lender: str) -> int:
         """
         :param lender: Lending company to get ID of
         :return: Lending company ID of specified lender
@@ -143,11 +178,7 @@ class CONSTANTS:
         """
 
         if CONSTANTS.LENDING_COMPANIES is None:
-            raw_countries = requests.get(ENDPOINTS.API_LENDING_COMPANIES_URI).json()
-
-            CONSTANTS.LENDING_COMPANIES = dict(
-                map(lambda data: (data['lenderGroupName'], data['lenderGroupId']), raw_countries)
-            )
+            cls.get_lending_companies()
 
         if lender not in CONSTANTS.LENDING_COMPANIES:
             raise ValueError(f'Lending company must be one of the following: {", ".join(CONSTANTS.LENDING_COMPANIES)}')

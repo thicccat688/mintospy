@@ -1039,6 +1039,18 @@ class API:
         self.driver.execute_script('arguments[0].click();', element)
 
     @staticmethod
+    def get_currencies() -> dict:
+        return CONSTANTS.get_currencies()
+
+    @staticmethod
+    def get_countries() -> dict:
+        return CONSTANTS.get_countries()
+
+    @staticmethod
+    def get_lending_companies() -> dict:
+        return CONSTANTS.get_lending_companies()
+
+    @staticmethod
     def _create_driver() -> webdriver:
         options = webdriver.ChromeOptions()
 
