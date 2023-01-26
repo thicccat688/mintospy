@@ -29,6 +29,7 @@ class API:
             password: str,
             tfa_secret: str = None,
             google_api_key: str = None,
+            cookies: List[dict] = None,
             save_cookies: bool = True,
     ):
         """
@@ -36,7 +37,9 @@ class API:
         :param email: Account's email
         :param password: Account's password
         :param tfa_secret: Base32 secret used for two-factor authentication
-        :param google_api_key: API key for Speech Recognition API (Optional, if not sent will use default key)
+        :param google_api_key: API key for Speech Recognition API for solving ReCAPTCHA challenges with audio
+        (Recommended for production. Will use default API key provided by Google if not provided)
+        :param cookies: Cookies to load in to web driver on boot
         :param save_cookies: Set to false if you don't want your cookies to be saved locally for faster login
         (Only mandatory if account has two-factor authentication enabled)
         """
@@ -55,6 +58,7 @@ class API:
         self.tfa_secret = tfa_secret
 
         self.should_save = save_cookies
+        self.cookies = cookies
 
         # Initialise web driver session
         self.driver = self._create_driver()
@@ -111,7 +115,7 @@ class API:
 
         response = self._make_request(
             url=ENDPOINTS.API_AGGREGATES_OVERVIEW_URI,
-            params={'currencyIsoCode': currency_iso_code},
+            params={'currencyIsoCode': currency_iso_code, 'lenderStatus': 'All'},
         )
 
         return Utils.parse_mintos_items(response)
@@ -436,8 +440,7 @@ class API:
 
         response = pd.DataFrame.from_records(Utils.parse_investments(items)).set_index(row_index).fillna('N/A')
 
-        if self.should_save:
-            self._save_cookies()
+        self._save_cookies()
 
         return response
 
@@ -452,8 +455,7 @@ class API:
             params={'status': 0 if current else 1},
         )
 
-        if self.should_save:
-            self._save_cookies()
+        self._save_cookies()
 
         return response
 
@@ -708,8 +710,7 @@ class API:
 
         response = pd.DataFrame.from_records(Utils.parse_investments(items)).set_index('ISIN').fillna('N/A')
 
-        if self.should_save:
-            self._save_cookies()
+        self._save_cookies()
 
         return response
 
@@ -722,8 +723,7 @@ class API:
             url=ENDPOINTS.API_LOANS_FILTER_URI,
         )
 
-        if self.should_save:
-            self._save_cookies()
+        self._save_cookies()
 
         return response
 
@@ -764,7 +764,11 @@ class API:
         self.driver.get(ENDPOINTS.LOGIN_URI)
 
         # Import cookies to web driver with the required validations and stop login process if they're valid
-        valid_import = Utils.import_cookies(driver=self.driver, file_path=f'{self.email}_cookies.pkl')
+        valid_import = Utils.import_cookies(
+            driver=self.driver,
+            file_path=f'{self.email}_cookies.pkl',
+            cookies=self.cookies,
+        )
 
         # If cookies imported are valid, skip the rest of the authentication process
         if valid_import:
@@ -820,8 +824,7 @@ class API:
             except TimeoutException:
                 raise MintosException('Your account could not be fetched - Check your internet connection.')
 
-            if self.should_save:
-                self._save_cookies()
+            self._save_cookies()
 
             return
 
@@ -879,10 +882,12 @@ class API:
                 timeout=30,
             )
 
-        if self.should_save:
-            self._save_cookies()
+        self._save_cookies()
 
     def _save_cookies(self) -> None:
+        if not self.should_save:
+            return 
+        
         with open(f'{self.email}_cookies.pkl', 'wb') as f:
             pickle.dump(self.driver.get_cookies(), f)
 
@@ -928,8 +933,7 @@ class API:
 
         response = self.driver.execute_script(fetch_script)
 
-        if self.should_save:
-            self._save_cookies()
+        self._save_cookies()
 
         return response
 
@@ -982,15 +986,19 @@ class API:
             }}
         );
 
-        return await response.json();
+        return {{ status_code: response.status, json: await response.json() }};
         '''
 
         response = self.driver.execute_script(fetch_script)
 
-        if self.should_save:
-            self._save_cookies()
+        json_response = response['json']
 
-        return response
+        if response['status_code'] >= 400:
+            raise MintosException(json_response)
+
+        self._save_cookies()
+
+        return json_response
 
     def _wait_for_element(
             self,

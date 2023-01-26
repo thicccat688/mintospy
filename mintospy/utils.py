@@ -32,7 +32,7 @@ class Utils:
 
                 if isinstance(v, dict):
                     if v.get('amount'):
-                        new_items[idx][cls.camel_to_snake(k)] = cls._str_to_float(v['amount'])
+                        new_items[idx][k] = cls._str_to_float(v['amount'])
 
                         currency = v['currency']
 
@@ -42,13 +42,11 @@ class Utils:
                     if v.get('score'):
                         n = {'score': cls._str_to_float(v['score'])}
 
-                        n.update({cls.camel_to_snake(k): cls._str_to_float(v) for k, v in v['subscores'].items()})
+                        n.update({k: cls._str_to_float(v) for k, v in v['subscores'].items()})
 
                         new_items[idx].update(n)
 
                     continue
-
-                k = cls.camel_to_snake(k)
 
                 if k in {'created_at', 'loan_dt_end', 'next_planned_payment_date'} and isinstance(v, (float, int)):
                     new_items[idx][k] = datetime.fromtimestamp(v / 1000).date()
@@ -57,22 +55,6 @@ class Utils:
                     new_items[idx][k] = cls._str_to_float(v)
 
         return new_items
-
-    @classmethod
-    def camel_to_snake(cls, __str: str) -> str:
-        assert isinstance(__str, str), 'You can only convert a string from camel case to snake case'
-
-        new_string = ''
-
-        for i, s in enumerate(__str):
-            if s.isupper() and i != 0:
-                new_string += f'_{s.lower()}'
-
-                continue
-
-            new_string += s
-
-        return new_string
 
     @staticmethod
     def dict_to_form_data(__obj: dict) -> str:
@@ -88,19 +70,29 @@ class Utils:
         parsed_item = {}
 
         for k, v in item.items():
-            parsed_item[cls.camel_to_snake(k)] = cls._str_to_float(v)
+            parsed_item[k] = cls._str_to_float(v)
 
         return parsed_item
 
     @classmethod
-    def import_cookies(cls, driver: WebDriver, file_path: str) -> bool:
+    def import_cookies(cls, driver: WebDriver, file_path: str, cookies: List[dict] = None) -> bool:
         """
         :param driver: Web driver object to import cookies in to
         :param file_path: File path to unpickle cookies from
+        :param cookies: Cookies to be imported
         :return: True if imported successfully, otherwise False
         """
 
         try:
+            if isinstance(cookies, list):
+                if not cls.validate_cookies(cookies):
+                    return False
+
+                for cookie in cookies:
+                    driver.add_cookie(cookie)
+
+                return True
+
             with open(file_path, 'rb') as f:
                 cookies = pickle.load(f)
 

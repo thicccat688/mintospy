@@ -106,7 +106,10 @@ class CONSTANTS:
             raw_currencies = requests.get(ENDPOINTS.API_CURRENCIES_URI).json()
 
             cls.CURRENCIES = dict(
-                map(lambda data: (data['abbreviation'], data['isoCode']), raw_currencies['items'])
+                map(
+                    lambda data: (data['abbreviation'], {k: v for k, v in data.items() if k != 'abbreviation'}),
+                    raw_currencies['items'],
+                )
             )
 
         return cls.CURRENCIES
@@ -156,7 +159,7 @@ class CONSTANTS:
         if currency not in cls.CURRENCIES:
             raise ValueError(f'Currency must be one of the following: {", ".join(cls.CURRENCIES)}')
 
-        return CONSTANTS.CURRENCIES[currency]
+        return CONSTANTS.CURRENCIES[currency].get('isoCode')
 
     @classmethod
     def get_country_iso(cls, country: str) -> str:
