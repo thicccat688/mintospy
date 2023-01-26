@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='mintospy',
-    version='0.3.0',
+    version='0.3.1',
     license='MIT',
     author='Tomás Perestrelo',
     author_email='tomasperestrelo21@gmail.com',

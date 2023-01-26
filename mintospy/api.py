@@ -398,7 +398,11 @@ class API:
             if response.get('errors'):
                 raise MintosException(response['errors'][0])
 
-            investment_params['pagination']['page'] += 1
+            if claims:
+                investment_params['page'] += 1
+
+            else:
+                investment_params['pagination']['page'] += 1
 
             request_args.append({
                 'url': ENDPOINTS.API_LOANS_URI,
