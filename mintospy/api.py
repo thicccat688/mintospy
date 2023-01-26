@@ -264,10 +264,10 @@ class API:
                 investment_params['countries'].append(CONSTANTS.get_country_iso(country))
 
         if isinstance(lending_companies, list):
-            investment_params['lenderGroups'] = []
+            investment_params['lenderCompanies'] = []
 
             for lender in lending_companies:
-                investment_params['lenderGroups'].append(CONSTANTS.get_lending_company_id(lender))
+                investment_params['lenderCompanies'].append(CONSTANTS.get_lending_company_id(lender))
 
         if isinstance(loan_types, list):
             investment_params['pledges'] = []
@@ -552,10 +552,10 @@ class API:
                 investment_params['countries'].append(CONSTANTS.get_country_iso(country))
 
         if isinstance(lending_companies, list):
-            investment_params['lenderGroups'] = []
+            investment_params['lenderCompanies'] = []
 
             for lender in lending_companies:
-                investment_params['lenderGroups'].append(CONSTANTS.get_lending_company_id(lender))
+                investment_params['lenderCompanies'].append(CONSTANTS.get_lending_company_id(lender))
 
         if isinstance(loan_types, list):
             investment_params['pledges'] = []

@@ -103,10 +103,10 @@ class CONSTANTS:
         """
 
         if cls.CURRENCIES is None:
-            raw_countries = requests.get(ENDPOINTS.API_CURRENCIES_URI).json()
+            raw_currencies = requests.get(ENDPOINTS.API_CURRENCIES_URI).json()
 
             cls.CURRENCIES = dict(
-                map(lambda data: (data['abbreviation'], data['isoCode']), raw_countries['items'])
+                map(lambda data: (data['abbreviation'], data['isoCode']), raw_currencies['items'])
             )
 
         return cls.CURRENCIES
@@ -131,10 +131,13 @@ class CONSTANTS:
         """
 
         if cls.LENDING_COMPANIES is None:
-            raw_countries = requests.get(ENDPOINTS.API_LENDING_COMPANIES_URI).json()
+            raw_companies = requests.get(ENDPOINTS.API_LENDING_COMPANIES_URI).json()
 
             cls.LENDING_COMPANIES = dict(
-                map(lambda data: (data['lenderGroupName'], data['lenderGroupId']), raw_countries)
+                map(
+                    lambda data: (data['name'], {k: v for k, v in data.items() if k != 'name'}),
+                    raw_companies['items']
+                )
             )
 
         return cls.LENDING_COMPANIES
@@ -147,7 +150,8 @@ class CONSTANTS:
         :raises ValueError: If currency isn't included in Mintos' accepted currencies
         """
 
-        if cls.CURRENCIES is None: cls.get_currencies()
+        if cls.CURRENCIES is None:
+            cls.get_currencies()
 
         if currency not in cls.CURRENCIES:
             raise ValueError(f'Currency must be one of the following: {", ".join(cls.CURRENCIES)}')
@@ -162,7 +166,8 @@ class CONSTANTS:
         :raises ValueError: If country isn't included in Mintos' accepted countries
         """
 
-        if CONSTANTS.COUNTRIES is None: cls.get_countries()
+        if CONSTANTS.COUNTRIES is None:
+            cls.get_countries()
 
         if country not in cls.COUNTRIES:
             raise ValueError(f'Country must be one of the following: {", ".join(cls.COUNTRIES)}')
@@ -183,7 +188,7 @@ class CONSTANTS:
         if lender not in CONSTANTS.LENDING_COMPANIES:
             raise ValueError(f'Lending company must be one of the following: {", ".join(CONSTANTS.LENDING_COMPANIES)}')
 
-        return CONSTANTS.LENDING_COMPANIES[lender]
+        return int(CONSTANTS.LENDING_COMPANIES[lender].get('id'))
 
     @classmethod
     def get_amoritzation_method_id(cls, method: str) -> int:

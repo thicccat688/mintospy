@@ -59,3 +59,15 @@ def test_loan_details():
     assert isinstance(mintos_client.get_note_details('LVX000036GR5'), pd.DataFrame)
 
     assert isinstance(mintos_client.get_claim_details('35917500'), dict)
+
+
+def test_currencies():
+    assert isinstance(mintos_client.get_currencies(), dict)
+
+
+def test_countries():
+    assert isinstance(mintos_client.get_countries(), dict)
+
+
+def test_lending_companies():
+    assert isinstance(mintos_client.get_lending_companies(), dict)
