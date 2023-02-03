@@ -5,7 +5,7 @@ from mintospy.utils import Utils
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.remote.webelement import WebElement
-from selenium.common import TimeoutException
+from selenium.common.exceptions import TimeoutException
 from selenium_recaptcha_solver import API as RECAPTCHA_API
 from selenium_stealth import stealth
 from typing import Union, List
@@ -25,8 +25,8 @@ import os
 class API:
     def __init__(
             self,
-            email: str,
-            password: str,
+            email: str = None,
+            password: str = None,
             tfa_secret: str = None,
             google_api_key: str = None,
             cookies: List[dict] = None,
@@ -44,14 +44,15 @@ class API:
         (Only mandatory if account has two-factor authentication enabled)
         """
 
-        if email is None:
-            raise ValueError('Invalid email.')
+        if not cookies:
+            if email is None:
+                raise ValueError('Invalid email.')
 
-        if password is None:
-            raise ValueError('Invalid password.')
+            if password is None:
+                raise ValueError('Invalid password.')
 
-        if tfa_secret is None:
-            warnings.warn('Using two-factor authentication with your Mintos account is highly recommended.')
+            if tfa_secret is None:
+                warnings.warn('Using two-factor authentication with your Mintos account is highly recommended.')
 
         self.email = email
         self.password = password
@@ -885,11 +886,13 @@ class API:
         self._save_cookies()
 
     def _save_cookies(self) -> None:
-        if not self.should_save:
+        self.cookies = self.driver.get_cookies()
+
+        if not self.should_save or not self.email:
             return 
-        
+
         with open(f'{self.email}_cookies.pkl', 'wb') as f:
-            pickle.dump(self.driver.get_cookies(), f)
+            pickle.dump(self.cookies, f)
 
     def _gen_totp(self) -> str:
         """
@@ -903,7 +906,7 @@ class API:
             request_args: List[dict],
     ) -> List[dict]:
         """
-        Request handler that makes fetch requests directly in the webdriver's console
+        Request handler that makes fetch requests directly in the webdriver console
         :param request_args: List of request arguments with URL, method, headers, and data
         :return: JSON responses from multiple HTTP requests
         """
@@ -921,6 +924,7 @@ class API:
                 {{ 
                     method: method,
                     headers: headers,
+                    credentials: 'include',
                     body: headers['content-type'] == 'application/json' ? JSON.stringify(body) : body,
                 }}
             );
@@ -946,7 +950,7 @@ class API:
             data: dict = None,
     ):
         """
-        Request handler that makes fetch requests directly in the webdriver's console
+        Request handler that makes fetch requests directly in the webdriver console
         :param url: URL of endpoint to call
         :param method: Request method to use (POST, GET, PUT, DELETE)
         :param headers: Headers to send in the HTTP request
@@ -964,7 +968,7 @@ class API:
         fetch_parameters = {
             'url': url,
             'method': method,
-            'headers': request_headers
+            'headers': request_headers,
         }
 
         if isinstance(data, dict):
@@ -982,6 +986,7 @@ class API:
             {{ 
                 method: method,
                 headers: headers,
+                credentials: 'include',
                 body: headers['content-type'] == 'application/json' ? JSON.stringify(body) : body,
             }}
         );
@@ -1063,10 +1068,10 @@ class API:
         return CONSTANTS.get_lending_companies()
 
     @staticmethod
-    def _create_driver() -> webdriver:
+    def _create_driver() -> webdriver.Chrome:
         options = webdriver.ChromeOptions()
 
-        options.add_argument("--headless")
+        # options.add_argument("--headless")
         options.add_argument("--window-size=1920,1080")
 
         options.add_argument(f'--user-agent={CONSTANTS.USER_AGENT}')

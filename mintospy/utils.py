@@ -1,3 +1,4 @@
+from mintospy.exceptions import MintosException
 from mintospy.constants import CONSTANTS
 from typing import Union
 from selenium.webdriver.chrome.webdriver import WebDriver
@@ -84,9 +85,11 @@ class Utils:
         """
 
         try:
+            driver.delete_all_cookies()
+
             if isinstance(cookies, list):
                 if not cls.validate_cookies(cookies):
-                    return False
+                    raise MintosException('Invalid cookies supplied.')
 
                 for cookie in cookies:
                     driver.add_cookie(cookie)
@@ -102,8 +105,6 @@ class Utils:
                     os.remove(file_path)
 
                     return False
-
-                driver.delete_all_cookies()
 
                 for cookie in cookies:
                     driver.add_cookie(cookie)
