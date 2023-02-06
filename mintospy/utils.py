@@ -76,26 +76,13 @@ class Utils:
         return parsed_item
 
     @classmethod
-    def import_cookies(cls, driver: WebDriver, file_path: str, cookies: List[dict] = None) -> bool:
+    def import_cookies(cls, file_path: str) -> bool:
         """
-        :param driver: Web driver object to import cookies in to
         :param file_path: File path to unpickle cookies from
-        :param cookies: Cookies to be imported
         :return: True if imported successfully, otherwise False
         """
 
         try:
-            driver.delete_all_cookies()
-
-            if isinstance(cookies, list):
-                if not cls.validate_cookies(cookies):
-                    raise MintosException('Invalid cookies supplied.')
-
-                for cookie in cookies:
-                    driver.add_cookie(cookie)
-
-                return True
-
             with open(file_path, 'rb') as f:
                 cookies = pickle.load(f)
 
@@ -106,10 +93,7 @@ class Utils:
 
                     return False
 
-                for cookie in cookies:
-                    driver.add_cookie(cookie)
-
-                return True
+                return cookies
 
         except (FileNotFoundError, EOFError):
             return False
@@ -142,31 +126,6 @@ class Utils:
 
         except ValueError:
             return default_return
-
-    @classmethod
-    def mount_url(cls, url: str, params: Union[dict, List[tuple]]) -> str:
-        query_string = cls._mount_query_string(params)
-
-        return url + query_string
-
-    @staticmethod
-    def _mount_query_string(params: Union[dict, List[tuple]]) -> str:
-        query_string = '?'
-
-        if params is not None:
-            if len(params) == 0:
-                raise ValueError('Invalid query parameters.')
-
-            if isinstance(params, list):
-                for (k, v) in params:
-                    query_string += f'{k}={v}&'
-
-            if isinstance(params, dict):
-                for (k, v) in params.items():
-                    query_string += f'{k}={v}&'
-
-        # Get query parameters string except last ampersand (&)
-        return query_string[:-1]
 
     @staticmethod
     def _safe_parse_json(s: str) -> Union[dict, str]:

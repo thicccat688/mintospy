@@ -1,5 +1,6 @@
 from mintospy.api import API
 import pandas as pd
+import random
 import pytest
 import os
 
@@ -41,14 +42,21 @@ def test_investments(current: bool, claims: bool):
     )
 
 
-def test_investment_filters():
-    assert isinstance(mintos_client.get_investment_filters(), dict)
+@pytest.mark.parametrize('current', [True, False])
+def test_investment_filters(current: bool):
+    assert isinstance(mintos_client.get_investment_filters(current), dict)
 
 
-def test_loans():
-    assert isinstance(mintos_client.get_loans(currencies=['EUR', 'KZT']), pd.DataFrame)
-
-    assert isinstance(mintos_client.get_loans(currencies=['EUR', 'KZT'], secondary_market=True), pd.DataFrame)
+@pytest.mark.parametrize('secondary_market', [True, False])
+def test_loans(secondary_market: bool):
+    assert isinstance(
+        mintos_client.get_loans(
+            currencies=['EUR', 'KZT'],
+            quantity=random.randint(100, 1000),
+            secondary_market=secondary_market,
+        ),
+        pd.DataFrame
+    )
 
 
 def test_loan_filters():

@@ -14,11 +14,10 @@ from bs4 import BeautifulSoup
 from selenium import webdriver
 import selenium.common.exceptions
 import pandas as pd
-import requests
+import cloudscraper
 import warnings
 import pickle
 import pyotp
-import copy
 import os
 
 
@@ -59,22 +58,38 @@ class API:
         self.tfa_secret = tfa_secret
 
         self.should_save = save_cookies
-        self.cookies = cookies
+        self.cookies = cookies if cookies else Utils.import_cookies(f'{email}_cookies.pkl')
 
-        # Initialise web driver session
-        self.driver = self._create_driver()
+        # Initialise Cloudscraper scraper object
+        self.scraper = cloudscraper.create_scraper(
+            browser={
+                'browser': 'chrome',
+                'platform': 'windows',
+                'desktop': True,
+            },
+        )
 
-        # Initialise RecaptchaV2 solver object
-        self.solver = RECAPTCHA_API(driver=self.driver, google_api_key=google_api_key)
+        if self.cookies:
+            for cookie in self.cookies:
+                self.scraper.cookies.set(cookie['name'], cookie['value'])
 
-        try:
-            # Automatically authenticate to Mintos API upon API object initialization
-            self.login()
+        else:
+            # Initialise web driver session
+            self.driver = self._create_driver()
 
-        except TimeoutException:
-            raise MintosException('Check your network connection.')
+            # Initialise RecaptchaV2 solver object
+            self.solver = RECAPTCHA_API(driver=self.driver, google_api_key=google_api_key)
+
+            try:
+                # Automatically authenticate to Mintos API upon API object initialization
+                self.login()
+
+            except TimeoutException:
+                raise MintosException('Check your network connection.')
 
         self.csrf_token = self._get_csrf_token()
+
+        self.scraper.headers.update({'anti-csrf-token': self.csrf_token})
 
     def get_portfolio_data(self, currency: str) -> dict:
         """
@@ -84,10 +99,10 @@ class API:
 
         currency_iso_code = CONSTANTS.get_currency_iso(currency)
 
-        response = self._make_request(
+        response = self.scraper.get(
             url=ENDPOINTS.API_PORTFOLIO_URI,
-            params={'currencyIsoCode': currency_iso_code}
-        )
+            params={'currencyIsoCode': currency_iso_code},
+        ).json()
 
         return Utils.parse_mintos_items(response)
 
@@ -99,10 +114,10 @@ class API:
 
         currency_iso_code = CONSTANTS.get_currency_iso(currency)
 
-        response = self._make_request(
+        response = self.scraper.get(
             url=ENDPOINTS.API_NAR_URI,
             params={'currencyIsoCode': currency_iso_code},
-        )
+        ).json()
 
         return Utils.parse_mintos_items(response)
 
@@ -114,10 +129,10 @@ class API:
 
         currency_iso_code = CONSTANTS.get_currency_iso(currency)
 
-        response = self._make_request(
+        response = self.scraper.get(
             url=ENDPOINTS.API_AGGREGATES_OVERVIEW_URI,
             params={'currencyIsoCode': currency_iso_code, 'lenderStatus': 'All'},
-        )
+        ).json()
 
         return Utils.parse_mintos_items(response)
 
@@ -383,18 +398,15 @@ class API:
 
         total_retrieved = 0
 
-        response = self._make_request(
+        response = self.scraper.post(
             url=url,
-            method='POST',
             headers=request_headers,
             data=investment_params,
-        )
+        ).json()
 
         total_retrieved += CONSTANTS.MAX_RESULTS
 
         responses = [response]
-
-        request_args = []
 
         while total_retrieved < quantity:
             if response['pagination']['total'] < total_retrieved:
@@ -409,16 +421,15 @@ class API:
             else:
                 investment_params['pagination']['page'] += 1
 
-            request_args.append({
-                'url': ENDPOINTS.API_LOANS_URI,
-                'method': 'POST',
-                'headers': request_headers,
-                'body': copy.deepcopy(investment_params),
-            })
+            response = self.scraper.post(
+                url=url,
+                headers=request_headers,
+                data=investment_params,
+            ).json()
 
-            total_retrieved += 300
+            responses.extend(response)
 
-        responses.extend(self._make_requests(request_args))
+            total_retrieved += CONSTANTS.MAX_RESULTS
 
         items = []
 
@@ -441,8 +452,6 @@ class API:
 
         response = pd.DataFrame.from_records(Utils.parse_investments(items)).set_index(row_index).fillna('N/A')
 
-        self._save_cookies()
-
         return response
 
     def get_investment_filters(self, current: bool = False) -> dict:
@@ -451,12 +460,10 @@ class API:
         :return: Investment filters provided by Mintos
         """
 
-        response = self._make_request(
+        response = self.scraper.get(
             url=ENDPOINTS.API_INVESTMENTS_FILTER_URI,
             params={'status': 0 if current else 1},
-        )
-
-        self._save_cookies()
+        ).json()
 
         return response
 
@@ -659,25 +666,16 @@ class API:
         if isinstance(min_investment_amount, float):
             investment_params['minAmount'] = min_investment_amount
 
-        request_headers = {
-            'anti-csrf-token': self.csrf_token,
-            'content-type': 'application/json',
-        }
-
         total_retrieved = 0
 
-        response = self._make_request(
+        response = self.scraper.post(
             url=f'{ENDPOINTS.API_LOANS_URI}/{"secondary" if secondary_market else "primary"}',
-            method='POST',
-            headers=request_headers,
-            data=investment_params,
-        )
+            json=investment_params,
+        ).json()
 
         total_retrieved += CONSTANTS.MAX_RESULTS
 
         responses = [response]
-
-        request_args = []
 
         while total_retrieved < quantity:
             if response['pagination']['total'] < total_retrieved:
@@ -688,21 +686,26 @@ class API:
 
             investment_params['pagination']['page'] += 1
 
-            request_args.append({
-                'url': f'{ENDPOINTS.API_LOANS_URI}/{"secondary" if secondary_market else "primary"}',
-                'method': 'POST',
-                'headers': request_headers,
-                'body': copy.deepcopy(investment_params),
-            })
+            loans = self.scraper.post(
+                url=f'{ENDPOINTS.API_LOANS_URI}/{"secondary" if secondary_market else "primary"}',
+                json=investment_params,
+            ).json()
 
-            total_retrieved += 300
+            responses.extend(loans)
 
-        responses.extend(self._make_requests(request_args))
+            total_retrieved += CONSTANTS.MAX_RESULTS
 
         items = []
 
         for resp in responses:
-            items.extend(resp['items'])
+            try:
+                items.extend(resp['items'])
+
+            except KeyError:
+                raise MintosException('Mintos had an issue processing the loan retrieval request.')
+
+            except TypeError:
+                pass
 
         items = items[0:quantity]
 
@@ -711,8 +714,6 @@ class API:
 
         response = pd.DataFrame.from_records(Utils.parse_investments(items)).set_index('ISIN').fillna('N/A')
 
-        self._save_cookies()
-
         return response
 
     def get_loan_filters(self) -> dict:
@@ -720,11 +721,9 @@ class API:
         :return: Loan filters provided by Mintos
         """
 
-        response = self._make_request(
+        response = self.scraper.get(
             url=ENDPOINTS.API_LOANS_FILTER_URI,
-        )
-
-        self._save_cookies()
+        ).json()
 
         return response
 
@@ -735,7 +734,7 @@ class API:
         :return: Note details provided by Mintos
         """
 
-        response = self._make_request(url=f'{ENDPOINTS.API_NOTES_DETAILS_URI}/{isin}/loans')
+        response = self.scraper.get(url=f'{ENDPOINTS.API_NOTES_DETAILS_URI}/{isin}/loans').json()
 
         if response is None:
             raise ValueError(f'Could not get details for Note with ID of {isin}.')
@@ -750,7 +749,7 @@ class API:
         :return: Claim details provided by Mintos
         """
 
-        response = self._make_request(url=f'{ENDPOINTS.API_CLAIMS_DETAILS_URI}/{claim_id}/summary')
+        response = self.scraper.get(url=f'{ENDPOINTS.API_CLAIMS_DETAILS_URI}/{claim_id}/summary').json()
 
         if response is None:
             raise ValueError(f'Could not get details for Claim with ID of {claim_id}.')
@@ -763,17 +762,6 @@ class API:
         """
 
         self.driver.get(ENDPOINTS.LOGIN_URI)
-
-        # Import cookies to web driver with the required validations and stop login process if they're valid
-        valid_import = Utils.import_cookies(
-            driver=self.driver,
-            file_path=f'{self.email}_cookies.pkl',
-            cookies=self.cookies,
-        )
-
-        # If cookies imported are valid, skip the rest of the authentication process
-        if valid_import:
-            return
 
         try:
             self._wait_for_element(
@@ -824,8 +812,6 @@ class API:
 
             except TimeoutException:
                 raise MintosException('Your account could not be fetched - Check your internet connection.')
-
-            self._save_cookies()
 
             return
 
@@ -883,13 +869,15 @@ class API:
                 timeout=30,
             )
 
-        self._save_cookies()
-
     def _save_cookies(self) -> None:
-        self.cookies = self.driver.get_cookies()
+        try:
+            self.cookies = self.driver.get_cookies()
+
+        except AttributeError:
+            self.cookies = self.scraper.cookies
 
         if not self.should_save or not self.email:
-            return 
+            return
 
         with open(f'{self.email}_cookies.pkl', 'wb') as f:
             pickle.dump(self.cookies, f)
@@ -900,110 +888,6 @@ class API:
         """
 
         return pyotp.TOTP(self.tfa_secret).now()
-
-    def _make_requests(
-            self,
-            request_args: List[dict],
-    ) -> List[dict]:
-        """
-        Request handler that makes fetch requests directly in the webdriver console
-        :param request_args: List of request arguments with URL, method, headers, and data
-        :return: JSON responses from multiple HTTP requests
-        """
-
-        for arg in request_args:
-            if arg['headers'].get('content-type') == 'application/x-www-form-urlencoded':
-                arg['body'] = Utils.dict_to_form_data(arg['body'])
-
-        fetch_script = f'''
-        const requests = {request_args};
-
-        const parsedRequests = requests.map(({{ url, method, headers, body }}) => {{
-            return fetch(
-                url, 
-                {{ 
-                    method: method,
-                    headers: headers,
-                    credentials: 'include',
-                    body: headers['content-type'] == 'application/json' ? JSON.stringify(body) : body,
-                }}
-            );
-        }});
-
-        return await Promise.all(parsedRequests).then(async (res) => {{ 
-            return Promise.all(res.map(async (data) => await data.json()))
-        }})
-        '''
-
-        response = self.driver.execute_script(fetch_script)
-
-        self._save_cookies()
-
-        return response
-
-    def _make_request(
-            self,
-            url: str,
-            method: str = 'GET',
-            headers: dict = None,
-            params: Union[dict, List[tuple]] = None,
-            data: dict = None,
-    ):
-        """
-        Request handler that makes fetch requests directly in the webdriver console
-        :param url: URL of endpoint to call
-        :param method: Request method to use (POST, GET, PUT, DELETE)
-        :param headers: Headers to send in the HTTP request
-        :param params: Query parameters to send in HTTP request (Send as list of tuples for duplicate query strings)
-        :return: JSON response from fetch request
-        """
-
-        url = Utils.mount_url(url, params)
-
-        request_headers = {'anti-csrf-token': self.csrf_token, 'content-type': 'application/json'}
-
-        if isinstance(headers, dict):
-            request_headers.update(headers)
-
-        fetch_parameters = {
-            'url': url,
-            'method': method,
-            'headers': request_headers,
-        }
-
-        if isinstance(data, dict):
-            if request_headers['content-type'] == 'application/json':
-                fetch_parameters.update({'body': data})
-
-            else:
-                fetch_parameters.update({'body': Utils.dict_to_form_data(data)})
-
-        fetch_script = f'''
-        const {{ url, method, headers, body }} = {fetch_parameters};
-
-        const response = await fetch(
-            url, 
-            {{ 
-                method: method,
-                headers: headers,
-                credentials: 'include',
-                body: headers['content-type'] == 'application/json' ? JSON.stringify(body) : body,
-            }}
-        );
-
-        return {{ status_code: response.status, json: await response.json() }};
-        '''
-
-        response = self.driver.execute_script(fetch_script)
-
-        json_response = response['json']
-
-        if response['status_code'] >= 400:
-            raise MintosException(json_response)
-
-        self._save_cookies()
-
-        return json_response
 
     def _wait_for_element(
             self,
@@ -1031,12 +915,7 @@ class API:
         return self.driver.find_element(by=tag, value=locator)
 
     def _get_csrf_token(self) -> str:
-        s = requests.Session()
-
-        for cookie in self.driver.get_cookies():
-            s.cookies.set(cookie['name'], cookie['value'])
-
-        content = s.get(ENDPOINTS.WEB_APP_URI).text
+        content = self.scraper.get(ENDPOINTS.WEB_APP_URI).text
 
         parsed_content = BeautifulSoup(content, 'html.parser')
 
@@ -1071,7 +950,7 @@ class API:
     def _create_driver() -> webdriver.Chrome:
         options = webdriver.ChromeOptions()
 
-        options.add_argument("--headless")
+        # options.add_argument("--headless")
         options.add_argument("--window-size=1920,1080")
 
         options.add_argument(f'--user-agent={CONSTANTS.USER_AGENT}')

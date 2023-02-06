@@ -69,3 +69,5 @@ webdriver-manager==3.8.5
 webencodings==0.5.1
 wsproto==1.2.0
 zipp==3.11.0
+cloudscraper~=1.2.68
+setuptools~=65.5.1
