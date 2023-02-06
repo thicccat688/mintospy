@@ -950,7 +950,7 @@ class API:
     def _create_driver() -> webdriver.Chrome:
         options = webdriver.ChromeOptions()
 
-        # options.add_argument("--headless")
+        options.add_argument("--headless")
         options.add_argument("--window-size=1920,1080")
 
         options.add_argument(f'--user-agent={CONSTANTS.USER_AGENT}')
