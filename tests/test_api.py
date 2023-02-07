@@ -44,6 +44,7 @@ def test_investments(current: bool, claims: bool):
 
 @pytest.mark.parametrize('current', [True, False])
 def test_investment_filters(current: bool):
+    # This seems to only work in a sequence of API calls, so it's not recommended to call it alone!
     assert isinstance(mintos_client.get_investment_filters(current), dict)
 
 

@@ -456,6 +456,7 @@ class API:
 
     def get_investment_filters(self, current: bool = False) -> dict:
         """
+        This seems to only work in a sequence of API calls, so it's not recommended to call it alone!
         :param current: Set to True to get filters for current investments, else set to False
         :return: Investment filters provided by Mintos
         """
@@ -868,6 +869,8 @@ class API:
                 locator='header-wrapper',
                 timeout=30,
             )
+
+        self._save_cookies()
 
     def _save_cookies(self) -> None:
         try:
