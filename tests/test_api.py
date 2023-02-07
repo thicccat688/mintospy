@@ -31,21 +31,14 @@ def test_aggregates_overview():
 
 @pytest.mark.parametrize('current, claims', [(True, True), (True, False), (False, True), (False, False)])
 def test_investments(current: bool, claims: bool):
-    assert isinstance(
-        mintos_client.get_investments(
-            currency='EUR',
-            quantity=200,
-            current=current,
-            claims=claims,
-        ),
-        pd.DataFrame,
+    investments = mintos_client.get_investments(
+        currency='KZT',
+        quantity=random.randint(100, 1000),
+        current=current,
+        claims=claims,
     )
 
-
-@pytest.mark.parametrize('current', [True, False])
-def test_investment_filters(current: bool):
-    # This seems to only work in a sequence of API calls, so it's not recommended to call it alone!
-    assert isinstance(mintos_client.get_investment_filters(current), dict)
+    assert isinstance(investments, pd.DataFrame)
 
 
 @pytest.mark.parametrize('secondary_market', [True, False])

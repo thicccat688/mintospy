@@ -49,7 +49,7 @@ class Utils:
 
                     continue
 
-                if k in {'created_at', 'loan_dt_end', 'next_planned_payment_date'} and isinstance(v, (float, int)):
+                if k in {'createdAt', 'deletedAt', 'loanDtEnd'} and isinstance(v, (float, int)):
                     new_items[idx][k] = datetime.fromtimestamp(v / 1000).date()
 
                 else:

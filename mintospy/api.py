@@ -391,18 +391,17 @@ class API:
         if isinstance(min_purchased_date, datetime):
             investment_params['investmentDateFrom'] = min_purchased_date.strftime('%d.%m.%Y')
 
-        request_headers = {}
-
-        if claims:
-            request_headers['content-type'] = 'application/x-www-form-urlencoded'
-
         total_retrieved = 0
 
-        response = self.scraper.post(
-            url=url,
-            headers=request_headers,
-            data=investment_params,
-        ).json()
+        request_args = {'url': url}
+
+        if claims:
+            request_args['data'] = investment_params
+
+        else:
+            request_args['json'] = investment_params
+
+        response = self.scraper.post(**request_args).json()
 
         total_retrieved += CONSTANTS.MAX_RESULTS
 
@@ -421,11 +420,7 @@ class API:
             else:
                 investment_params['pagination']['page'] += 1
 
-            response = self.scraper.post(
-                url=url,
-                headers=request_headers,
-                data=investment_params,
-            ).json()
+            response = self.scraper.post(**request_args).json()
 
             responses.extend(response)
 
@@ -437,11 +432,17 @@ class API:
             if len(resp) == 0:
                 continue
 
-            if claims and resp.get('data'):
-                items.extend(resp['data'])
+            try:
+                resp_data, resp_items = resp.get('data'), resp.get('items')
 
-            elif resp.get('items'):
-                items.extend(resp['items'])
+            except AttributeError:
+                continue
+
+            if claims and resp_data:
+                items.extend(resp_data)
+
+            elif resp_items:
+                items.extend(resp_items)
 
         items = items[0:quantity]
 
