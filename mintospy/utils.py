@@ -1,7 +1,5 @@
-from mintospy.exceptions import MintosException
 from mintospy.constants import CONSTANTS
 from typing import Union
-from selenium.webdriver.chrome.webdriver import WebDriver
 from datetime import datetime, date
 from typing import List
 import pickle

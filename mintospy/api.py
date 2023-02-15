@@ -43,7 +43,14 @@ class API:
         (Only mandatory if account has two-factor authentication enabled)
         """
 
-        if not cookies:
+        self.email = email
+        self.password = password
+        self.tfa_secret = tfa_secret
+
+        self.should_save = save_cookies
+        self.cookies = cookies if cookies else Utils.import_cookies(f'{email}_cookies.pkl')
+
+        if not self.cookies:
             if email is None:
                 raise ValueError('Invalid email.')
 
@@ -52,13 +59,6 @@ class API:
 
             if tfa_secret is None:
                 warnings.warn('Using two-factor authentication with your Mintos account is highly recommended.')
-
-        self.email = email
-        self.password = password
-        self.tfa_secret = tfa_secret
-
-        self.should_save = save_cookies
-        self.cookies = cookies if cookies else Utils.import_cookies(f'{email}_cookies.pkl')
 
         # Initialise Cloudscraper scraper object
         self.scraper = cloudscraper.create_scraper(
@@ -100,8 +100,7 @@ class API:
         currency_iso_code = CONSTANTS.get_currency_iso(currency)
 
         response = self.scraper.get(
-            url=ENDPOINTS.API_PORTFOLIO_URI,
-            params={'currencyIsoCode': currency_iso_code},
+            url=f'{ENDPOINTS.API_PORTFOLIO_URI}/{currency_iso_code}/portfolio-data',
         ).json()
 
         return Utils.parse_mintos_items(response)
@@ -858,7 +857,7 @@ class API:
             try:
                 error_message = self.driver.find_element(by='class name', value='m-u-color-r4--text').text.strip()
 
-                if error_message == 'Invalid Two-factor code':
+                if error_message.lower() == 'invalid two-factor code':
                     raise ValueError('Invalid TFA secret.')
 
             except selenium.common.exceptions.NoSuchElementException:
@@ -873,9 +872,19 @@ class API:
 
         self._save_cookies()
 
+        self.driver.quit()
+
     def _save_cookies(self) -> None:
+        """
+        Saves cookies from web driver and sets them on cloudscraper instance.
+        In the event of no web driver, saves the cloudscraper instance's cookies.
+        """
+
         try:
             self.cookies = self.driver.get_cookies()
+
+            for cookie in self.cookies:
+                self.scraper.cookies.set(cookie['name'], cookie['value'])
 
         except AttributeError:
             self.cookies = self.scraper.cookies

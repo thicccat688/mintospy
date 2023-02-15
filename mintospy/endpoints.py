@@ -13,7 +13,7 @@ class ENDPOINTS:
 
     API_LENDING_COMPANIES_URI = f'{BASE_URI}/marketplace-api/v1/lender-companies'
 
-    API_PORTFOLIO_URI = f'{BASE_URI}/marketplace-api/v1/note-series/overview/portfolio-data'
+    API_PORTFOLIO_URI = f'{BASE_URI}/marketplace-api/v1/user/overview/currency'
 
     API_NAR_URI = f'{BASE_URI}/en/webapp-api/user/overview-net-annual-returns'
 
