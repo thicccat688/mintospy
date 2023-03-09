@@ -64,7 +64,7 @@ def test_loan_filters():
 
 
 def test_loan_details():
-    assert isinstance(mintos_client.get_note_details('LVX000036GR5'), pd.DataFrame)
+    assert isinstance(mintos_client.get_note_loans('LVX000036GR5'), pd.DataFrame)
 
     assert isinstance(mintos_client.get_claim_details('35917500'), dict)
 

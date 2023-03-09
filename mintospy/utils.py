@@ -74,6 +74,50 @@ class Utils:
         return parsed_item
 
     @classmethod
+    def parse_note_schedule(cls, item: dict) -> dict:
+        parsed_item = {}
+
+        for k, v in item.items():
+            if isinstance(v, dict):
+                continue
+
+            parsed_item[k] = v
+
+        parsed_item['id'] = item['loan']['id']
+        parsed_item['identifier'] = item['loan']['identifier']
+
+        is_prepaid = parsed_item.get('isPrepaid')
+
+        if is_prepaid:
+            parsed_item['isPrepaid'] = is_prepaid
+
+            return parsed_item
+
+        parsed_item['currency'] = item['currency']['abbreviation']
+
+        parsed_item['totalScheduled'] = item['total']['scheduled']
+        parsed_item['totalReceived'] = item['total']['received']
+        parsed_item['totalHasRemainder'] = item['total']['hasRemainder']
+
+        parsed_item['principalScheduled'] = item['principal']['scheduled']
+        parsed_item['principalReceived'] = item['principal']['received']
+        parsed_item['principalHasRemainder'] = item['principal']['hasRemainder']
+
+        parsed_item['interestScheduled'] = item['interest']['scheduled']
+        parsed_item['interestReceived'] = item['interest']['received']
+        parsed_item['interestHasRemainder'] = item['interest']['hasRemainder']
+
+        parsed_item['delayedInterestScheduled'] = item['delayedInterest']['accumulated']
+        parsed_item['delayedInterestReceived'] = item['delayedInterest']['received']
+        parsed_item['delayedInterestHasRemainder'] = item['delayedInterest']['hasRemainder']
+
+        parsed_item['latePaymentFeeScheduled'] = item['latePaymentFee']['accumulated']
+        parsed_item['latePaymentFeeReceived'] = item['latePaymentFee']['received']
+        parsed_item['latePaymentFeeHasRemainder'] = item['latePaymentFee']['hasRemainder']
+
+        return parsed_item
+
+    @classmethod
     def import_cookies(cls, file_path: str) -> Union[dict, None]:
         """
         :param file_path: File path to unpickle cookies from

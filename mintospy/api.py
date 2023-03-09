@@ -91,7 +91,7 @@ class MintosApi:
 
         self.scraper.headers.update({'anti-csrf-token': self.csrf_token})
 
-    def get_portfolio_data(self, currency: str) -> dict:
+    def get_portfolio_data(self, currency: Currency) -> dict:
         """
         :param currency: Currency of portfolio to get data from
         :return: Active/late funds, bad debt, defaulted debt, funds in recovery, count of active investments, and so on
@@ -105,7 +105,7 @@ class MintosApi:
 
         return Utils.parse_mintos_items(response)
 
-    def get_net_annual_return(self, currency: str) -> dict:
+    def get_net_annual_return(self, currency: Currency) -> dict:
         """
         :param currency: Currency of portfolio to get data from
         :return: Net annual return of requested portfolio with and without campaign bonuses
@@ -120,7 +120,7 @@ class MintosApi:
 
         return Utils.parse_mintos_items(response)
 
-    def get_aggregates_overview(self, currency: str) -> dict:
+    def get_aggregates_overview(self, currency: Currency) -> dict:
         """
         :param currency: Currency of portfolio to get data from
         :return: Same data returned by get_portfolio_data, but with outstanding principals and pending payments
@@ -728,21 +728,44 @@ class MintosApi:
 
         return response
 
-    def get_note_details(self, isin: str, raw: bool = False) -> List[dict]:
+    def get_note_loans(self, isin: str, raw: bool = False) -> Union[pd.DataFrame, List[dict]]:
         """
         :param isin: ISIN of note
         :param raw: Return raw details in JSON if set to True, or returns pandas dataframe of details if set to False
-        :return: Note details provided by Mintos
+        :return: Loans that compose the Note
         """
 
         response = self.scraper.get(url=f'{ENDPOINTS.API_NOTES_DETAILS_URI}/{isin}/loans').json()
 
         if response is None:
-            raise ValueError(f'Could not get details for Note with ID of {isin}.')
+            raise ValueError(f'Could not get loans for Note with ISIN of {isin}.')
 
         response = list(map(lambda item: Utils.parse_mintos_items(item), response.get('items')))
 
-        return response if raw else pd.DataFrame(response).set_index('identifier')
+        return response if raw else pd.DataFrame(response).set_index('identifier').fillna('N/A')
+
+    def get_note_schedule(self, isin: str, raw: bool = False) -> Union[pd.DataFrame, List[dict]]:
+        """
+        :param isin: ISIN of note
+        :param raw: Return raw details in JSON if set to True, or returns pandas dataframe of details if set to False
+        :return: Schedule of all the loans in the Note
+        """
+
+        response = self.scraper.get(url=f'{ENDPOINTS.API_NOTES_DETAILS_URI}/{isin}/payment-schedule').json()
+
+        if response is None:
+            raise ValueError(f'Could not get loan schedules for Note with ISIN of {isin}.')
+
+        response = list(map(lambda item: Utils.parse_mintos_items(item), response.get('paymentSchedule')))
+
+        if raw:
+            return response
+
+        df_parsed_response = list(map(lambda item: Utils.parse_note_schedule(item), response))
+
+        schedule_df = pd.DataFrame(df_parsed_response).set_index('identifier').fillna('N/A')
+
+        return schedule_df
 
     def get_claim_details(self, claim_id: str) -> dict:
         """
