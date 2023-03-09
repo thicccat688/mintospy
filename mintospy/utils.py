@@ -2,7 +2,7 @@ from mintospy.constants import CONSTANTS
 from typing import Union
 from datetime import datetime, date
 from typing import List
-import pickle
+import warnings
 import time
 import json
 import os
@@ -74,43 +74,49 @@ class Utils:
         return parsed_item
 
     @classmethod
-    def import_cookies(cls, file_path: str) -> bool:
+    def import_cookies(cls, file_path: str) -> Union[dict, None]:
         """
         :param file_path: File path to unpickle cookies from
         :return: True if imported successfully, otherwise False
         """
 
         try:
-            with open(file_path, 'rb') as f:
-                cookies = pickle.load(f)
+            with open(file_path, 'r') as f:
+                try:
+                    cookies = json.load(f)
 
-                if not cls.validate_cookies(cookies):
+                except json.decoder.JSONDecodeError:
+                    warnings.warn('Ignoring cookies file due to invalid format.')
+
                     f.close()
 
                     os.remove(file_path)
 
-                    return False
+                    return
 
-                return cookies
+                try:
+                    expiry = cookies['expiry']
+
+                except KeyError:
+                    warnings.warn('Ignoring cookies file due to invalid format.')
+
+                    f.close()
+
+                    os.remove(file_path)
+
+                    return
+
+                if time.time() > expiry:
+                    f.close()
+
+                    os.remove(file_path)
+
+                    return
+
+                return cookies.get('cookies')
 
         except (FileNotFoundError, EOFError):
-            return False
-
-    @classmethod
-    def validate_cookies(cls, cookies: List[dict]) -> bool:
-        if not isinstance(cookies, list):
-            return False
-
-        for cookie in cookies:
-            name, expiry = cookie.get('name'), cookie.get('expiry')
-
-            if not expiry:
-                continue
-
-            if name in CONSTANTS.SESSION_COOKIES and time.time() > expiry:
-                return False
-
-        return True
+            return
 
     @classmethod
     def str_to_date(cls, __str: str) -> Union[date, str]:

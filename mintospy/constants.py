@@ -1,4 +1,5 @@
 from mintospy.endpoints import ENDPOINTS
+from mintospy.enums import Currency
 import requests
 
 
@@ -87,14 +88,19 @@ class CONSTANTS:
         'available_for_investment': 'availableForInvestmentAmount',
     }
 
-    SESSION_COOKIES = {
-        'PHPSESSID',
-        'MW_SESSION_ID',
-    }
+    SESSION_EXPIRY_SECONDS = 900
 
     MAX_RESULTS = 300
 
-    USER_AGENT = 'Mozilla/5.0 (Windows NT 4.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/37.0.2049.0 Safari/537.36'
+    USER_AGENTS = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/109.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 13_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15',
+    ]
 
     @classmethod
     def get_currencies(cls) -> dict:
@@ -146,7 +152,7 @@ class CONSTANTS:
         return cls.LENDING_COMPANIES
 
     @classmethod
-    def get_currency_iso(cls, currency: str) -> int:
+    def get_currency_iso(cls, currency: Currency) -> int:
         """
         :param currency: Currency to validate and get ISO code of
         :return: Currency ISO code
@@ -194,7 +200,7 @@ class CONSTANTS:
         return int(CONSTANTS.LENDING_COMPANIES[lender].get('id'))
 
     @classmethod
-    def get_amoritzation_method_id(cls, method: str) -> int:
+    def get_amortization_method_id(cls, method: str) -> int:
         """
         :param method: Amortization method to get ID of (Full, partial, interest only, or bullet)
         :return: Amortization method ID

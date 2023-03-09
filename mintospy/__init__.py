@@ -1,1 +1,2 @@
-from mintospy.api import API
+from mintospy.api import MintosApi
+from mintospy.enums import *

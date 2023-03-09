@@ -1,33 +1,34 @@
 from mintospy.exceptions import MintosException
 from mintospy.constants import CONSTANTS
+from mintospy.enums import Currency
 from mintospy.endpoints import ENDPOINTS
 from mintospy.utils import Utils
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.common.exceptions import TimeoutException
-from selenium_recaptcha_solver import API as RECAPTCHA_API
-from selenium_stealth import stealth
+from selenium_recaptcha_solver import RecaptchaSolver
 from typing import Union, List
 from datetime import datetime
 from bs4 import BeautifulSoup
-from selenium import webdriver
+import undetected_chromedriver as webdriver
 import selenium.common.exceptions
 import pandas as pd
 import cloudscraper
 import warnings
-import pickle
+import random
 import pyotp
+import time
+import json
 import os
 
 
-class API:
+class MintosApi:
     def __init__(
             self,
             email: str = None,
             password: str = None,
             tfa_secret: str = None,
-            google_api_key: str = None,
             cookies: List[dict] = None,
             save_cookies: bool = True,
     ):
@@ -36,7 +37,6 @@ class API:
         :param email: Account's email
         :param password: Account's password
         :param tfa_secret: Base32 secret used for two-factor authentication
-        :param google_api_key: API key for Speech Recognition API for solving ReCAPTCHA challenges with audio
         (Recommended for production. Will use default API key provided by Google if not provided)
         :param cookies: Cookies to load in to web driver on boot
         :param save_cookies: Set to false if you don't want your cookies to be saved locally for faster login
@@ -48,7 +48,7 @@ class API:
         self.tfa_secret = tfa_secret
 
         self.should_save = save_cookies
-        self.cookies = cookies if cookies else Utils.import_cookies(f'{email}_cookies.pkl')
+        self.cookies = cookies if cookies else Utils.import_cookies(f'{email}_cookies.json')
 
         if not self.cookies:
             if email is None:
@@ -70,15 +70,15 @@ class API:
         )
 
         if self.cookies:
-            for cookie in self.cookies:
-                self.scraper.cookies.set(cookie['name'], cookie['value'])
+            for name, value in self.cookies.items():
+                self.scraper.cookies.set(name, value)
 
         else:
             # Initialise web driver session
             self.driver = self._create_driver()
 
             # Initialise RecaptchaV2 solver object
-            self.solver = RECAPTCHA_API(driver=self.driver, google_api_key=google_api_key)
+            self.solver = RecaptchaSolver(driver=self.driver)
 
             try:
                 # Automatically authenticate to Mintos API upon API object initialization
@@ -137,7 +137,7 @@ class API:
 
     def get_investments(
             self,
-            currency: str,
+            currency: Currency,
             quantity: int = 30,
             start_page: int = 1,
             claims: bool = False,
@@ -301,7 +301,7 @@ class API:
             investment_params['scheduleTypes'] = []
 
             for method in amortization_methods:
-                investment_params['schedule_types'].append(CONSTANTS.get_amoritzation_method_id(method))
+                investment_params['schedule_types'].append(CONSTANTS.get_amortization_method_id(method))
 
         if isinstance(max_risk_score, (float, int)):
             if 1 > max_risk_score > 10:
@@ -421,7 +421,7 @@ class API:
 
             response = self.scraper.post(**request_args).json()
 
-            responses.extend(response)
+            responses.append(response)
 
             total_retrieved += CONSTANTS.MAX_RESULTS
 
@@ -470,7 +470,7 @@ class API:
 
     def get_loans(
             self,
-            currencies: List[str],
+            currencies: List[Currency],
             quantity: int = 30,
             start_page: int = 1,
             sort_field: str = 'interest_rate',
@@ -585,7 +585,7 @@ class API:
             investment_params['scheduleTypes'] = []
 
             for method in amortization_methods:
-                investment_params['schedule_types'].append(CONSTANTS.get_amoritzation_method_id(method))
+                investment_params['schedule_types'].append(CONSTANTS.get_amortization_method_id(method))
 
         if isinstance(max_risk_score, (float, int)):
             if 1 > max_risk_score > 10:
@@ -692,7 +692,7 @@ class API:
                 json=investment_params,
             ).json()
 
-            responses.extend(loans)
+            responses.append(loans)
 
             total_retrieved += CONSTANTS.MAX_RESULTS
 
@@ -880,20 +880,21 @@ class API:
         In the event of no web driver, saves the cloudscraper instance's cookies.
         """
 
-        try:
-            self.cookies = self.driver.get_cookies()
+        self.cookies = self.driver.get_cookies()
 
-            for cookie in self.cookies:
-                self.scraper.cookies.set(cookie['name'], cookie['value'])
-
-        except AttributeError:
-            self.cookies = self.scraper.cookies
+        for cookie in self.cookies:
+            self.scraper.cookies.set(cookie['name'], cookie['value'])
 
         if not self.should_save or not self.email:
             return
 
-        with open(f'{self.email}_cookies.pkl', 'wb') as f:
-            pickle.dump(self.cookies, f)
+        with open(f'{self.email}_cookies.json', 'w') as f:
+            payload = {
+                    'cookies': self.scraper.cookies.get_dict(),
+                    'expiry': int(time.time() + CONSTANTS.SESSION_EXPIRY_SECONDS),
+                }
+
+            json.dump(payload, f)
 
     def _gen_totp(self) -> str:
         """
@@ -963,25 +964,16 @@ class API:
     def _create_driver() -> webdriver.Chrome:
         options = webdriver.ChromeOptions()
 
-        options.add_argument("--headless")
-        options.add_argument("--window-size=1920,1080")
+        user_agent = random.choice(CONSTANTS.USER_AGENTS)
 
-        options.add_argument(f'--user-agent={CONSTANTS.USER_AGENT}')
+        options.add_argument('--headless')
+        options.add_argument('--window-size=1920,1080')
+        options.add_argument(f'--user-agent={user_agent}')
+        options.add_argument('--disable-extensions')
 
-        options.add_argument('--no-sandbox')
-        options.add_argument("--disable-extensions")
+        options.add_argument('-no-sandbox')
 
-        driver = webdriver.Chrome(options=options)
-
-        stealth(
-            driver,
-            languages=["en-US", "en"],
-            vendor="Google Inc.",
-            platform="Win32",
-            webgl_vendor="Intel Inc.",
-            renderer="Intel Iris OpenGL Engine",
-            fix_hairline=True,
-        )
+        driver = webdriver.Chrome(options=options, version_main=110)
 
         return driver
 

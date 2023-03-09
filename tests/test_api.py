@@ -1,4 +1,4 @@
-from mintospy.api import API
+from mintospy.api import MintosApi
 import pandas as pd
 import random
 import pytest
@@ -10,7 +10,7 @@ password = os.getenv(key='password')
 tfa_secret = os.getenv(key='tfa_secret')
 
 
-mintos_client = API(
+mintos_client = MintosApi(
     email=email,
     password=password,
     tfa_secret=tfa_secret,
@@ -31,26 +31,32 @@ def test_aggregates_overview():
 
 @pytest.mark.parametrize('current, claims', [(True, True), (True, False), (False, True), (False, False)])
 def test_investments(current: bool, claims: bool):
+    quantity = random.randint(400, 1400)
+
     investments = mintos_client.get_investments(
         currency='KZT',
-        quantity=random.randint(100, 1000),
+        quantity=quantity,
         current=current,
         claims=claims,
     )
 
     assert isinstance(investments, pd.DataFrame)
+    assert len(investments) == quantity
 
 
 @pytest.mark.parametrize('secondary_market', [True, False])
 def test_loans(secondary_market: bool):
-    assert isinstance(
-        mintos_client.get_loans(
-            currencies=['EUR', 'KZT'],
-            quantity=random.randint(100, 1000),
-            secondary_market=secondary_market,
-        ),
-        pd.DataFrame
+    quantity = random.randint(400, 1400)
+
+    loans = mintos_client.get_loans(
+        currencies=['EUR', 'KZT'],
+        quantity=quantity,
+        secondary_market=secondary_market,
     )
+
+    assert isinstance(loans, pd.DataFrame)
+
+    assert len(loans) == quantity
 
 
 def test_loan_filters():

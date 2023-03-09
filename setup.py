@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='mintospy',
-    version='0.6.4',
+    version='1.0.0',
     license='MIT',
     author='Tomás Perestrelo',
     author_email='tomasperestrelo21@gmail.com',
@@ -15,7 +15,7 @@ setup(
     long_description_content_type='text/markdown',
     install_requires=[
         'selenium-recaptcha-solver',
-        'selenium-stealth',
+        'undetected-chromedriver',
         'selenium',
         'cloudscraper',
         'pandas',
