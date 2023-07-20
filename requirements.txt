@@ -36,7 +36,7 @@ pkginfo==1.9.2
 pluggy==1.0.0
 pycparser==2.21
 pydub==0.25.1
-Pygments==2.13.0
+Pygments==2.15.0
 pyotp==2.8.0
 pyparsing==3.0.9
 PySocks==1.7.1
